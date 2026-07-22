@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { getSupabaseBrowserClient, supabaseConfiguration } from "../../lib/supabase";
+import { initializeSupabaseBrowserClient } from "../../lib/supabase";
 
 type Mode = "login" | "signup" | "forgot" | "reset";
 
@@ -12,17 +12,19 @@ export default function AuthPage() {
   const [message,setMessage]=useState(""); const [busy,setBusy]=useState(false);
 
   useEffect(()=>{
-    const client=getSupabaseBrowserClient(); if(!client) return;
+    let unsubscribe:(()=>void)|undefined;
+    initializeSupabaseBrowserClient().then((client)=>{if(!client)return;
     const isReset=new URLSearchParams(window.location.search).get("mode")==="reset";
     client.auth.getSession().then(({data})=>{if(data.session&&!isReset) window.location.replace("/")});
     const {data}=client.auth.onAuthStateChange((event)=>{if(event==="PASSWORD_RECOVERY") setMode("reset")});
-    return ()=>data.subscription.unsubscribe();
+    unsubscribe=()=>data.subscription.unsubscribe();});
+    return ()=>unsubscribe?.();
   },[]);
 
   async function submit(event:FormEvent){
     event.preventDefault(); setMessage("");
-    const client=getSupabaseBrowserClient();
-    if(!client){setMessage(`Configuração ausente: ${supabaseConfiguration.missing.join(", ")}.`);return}
+    const client=await initializeSupabaseBrowserClient();
+    if(!client){setMessage("Não foi possível carregar a configuração do Supabase.");return}
     setBusy(true);
     try{
       if(mode==="login"){

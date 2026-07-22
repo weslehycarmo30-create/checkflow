@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { getSupabaseBrowserClient } from "../lib/supabase";
+import { initializeSupabaseBrowserClient } from "../lib/supabase";
 
 export function LogoutButton() {
   const [busy, setBusy] = useState(false);
 
   async function logout() {
-    const client = getSupabaseBrowserClient();
+    const client = await initializeSupabaseBrowserClient();
     if (!client || busy) return;
     setBusy(true);
     const { error } = await client.auth.signOut();

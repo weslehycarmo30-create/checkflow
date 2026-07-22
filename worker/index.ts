@@ -5,6 +5,9 @@ import handler from "vinext/server/app-router-entry";
 interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
+  NEXT_PUBLIC_SUPABASE_URL?: string;
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?: string;
+  NEXT_PUBLIC_SUPABASE_ANON_KEY?: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -28,6 +31,20 @@ interface ExecutionContext {
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+
+    if (url.pathname === "/api/supabase-config") {
+      const supabaseUrl = env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+      const supabasePublicKey = (
+        env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+        env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      )?.trim();
+      return Response.json(
+        supabaseUrl && supabasePublicKey
+          ? { url: supabaseUrl, publicKey: supabasePublicKey }
+          : { error: "Supabase não configurado no ambiente." },
+        { status: supabaseUrl && supabasePublicKey ? 200 : 503, headers: { "Cache-Control": "no-store" } },
+      );
+    }
 
     if (url.pathname === "/_vinext/image") {
       const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];

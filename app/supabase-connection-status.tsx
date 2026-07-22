@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  getSupabaseBrowserClient,
+  initializeSupabaseBrowserClient,
   supabaseConfiguration,
 } from "../lib/supabase";
 
@@ -14,20 +14,17 @@ export function SupabaseConnectionStatus() {
   );
 
   useEffect(() => {
-    const client = getSupabaseBrowserClient();
-    if (!client) return;
-
-    client.auth
-      .getSession()
-      .then(({ error }) => setState(error ? "error" : "ready"))
+    initializeSupabaseBrowserClient()
+      .then((client) => client?.auth.getSession())
+      .then((result) => setState(result && !result.error ? "ready" : "error"))
       .catch(() => setState("error"));
   }, []);
 
-  if (supabaseConfiguration.configured && state !== "error") return null;
+  if (state !== "error") return null;
 
   const detail = supabaseConfiguration.configured
     ? "O cliente não conseguiu validar a sessão. Revise a URL e a chave pública do projeto."
-    : `Configure ${supabaseConfiguration.missing.join(" e ")} no ambiente de execução.`;
+    : "Não foi possível carregar a configuração pública do Supabase no ambiente de execução.";
 
   return (
     <section className="configuration-notice" role="status">
