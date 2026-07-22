@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "CheckFlow — Gestão de checklists",
-  description: "Checklists, equipes e operações sob controle em um só lugar.",
+  description: "Gestão operacional para bares, buffets, restaurantes e empresas de eventos.",
   other: {
     "codex-preview": "development",
   },
