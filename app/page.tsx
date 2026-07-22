@@ -2,6 +2,7 @@
 
 import { useMemo, useState, type CSSProperties, type Dispatch, type SetStateAction } from "react";
 import { SupabaseConnectionStatus } from "./supabase-connection-status";
+import { PrivateRouteGuard } from "./private-route-guard";
 
 type IconName = "home" | "check" | "task" | "team" | "model" | "chart" | "gear" | "search" | "bell" | "plus" | "clock" | "arrow" | "close" | "calendar" | "filter" | "dots";
 
@@ -49,6 +50,7 @@ export default function Home() {
   const filtered = useMemo(()=>tasks.filter((t)=> !query || (t.title+t.sub+t.owner).toLowerCase().includes(query.toLowerCase())).filter((t,i)=> taskFilter!=="Minhas" || i===1 || i===3).filter((t)=>taskFilter!=="Atrasadas" || t.tone==="red"),[query,taskFilter]);
   const notify=(msg:string)=>{setToast(msg);setTimeout(()=>setToast(""),2600)};
   return <div className="app-shell">
+    <PrivateRouteGuard />
     <button className="mobile-menu" onClick={()=>setMobile(!mobile)} aria-label="Abrir menu">☰</button>
     <aside className={mobile?"sidebar open":"sidebar"}>
       <div className="brand"><span className="brandmark">✓</span><span>CheckFlow</span></div>
