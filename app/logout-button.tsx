@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { initializeSupabaseBrowserClient } from "../lib/supabase";
 
-export function LogoutButton() {
+export function LogoutButton({ variant = "avatar" }: { variant?: "avatar" | "menu" }) {
   const [busy, setBusy] = useState(false);
 
   async function logout() {
@@ -20,8 +20,8 @@ export function LogoutButton() {
   }
 
   return (
-    <button className="avatar main-avatar logout-avatar" onClick={logout} disabled={busy} title="Sair do CheckFlow" aria-label="Sair do CheckFlow">
-      {busy ? "…" : "WA"}
+    <button className={variant === "menu" ? "navitem logout-menu" : "avatar main-avatar logout-avatar"} onClick={logout} disabled={busy} title="Sair do CheckFlow" aria-label="Sair do CheckFlow">
+      {variant === "menu" ? <><span aria-hidden="true">↪</span><span>{busy ? "Saindo..." : "Sair"}</span></> : busy ? "…" : "WA"}
     </button>
   );
 }

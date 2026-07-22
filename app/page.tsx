@@ -56,7 +56,7 @@ export default function Home() {
     <aside className={mobile?"sidebar open":"sidebar"}>
       <div className="brand"><span className="brandmark">✓</span><span>CheckFlow</span></div>
       <nav>{nav.map(([label,icon])=><button key={label} className={section===label?"navitem active":"navitem"} onClick={()=>{setSection(label);setMobile(false)}}><Icon name={icon}/><span>{label}</span>{label==="Planos de ação"&&<b>3</b>}</button>)}</nav>
-      <div className="side-bottom"><button className="navitem" onClick={()=>setSection("Configurações")}><Icon name="gear"/>Configurações</button><button className="workspace"><span className="building">▥</span><span><small>Unidade atual</small>Bar & Buffet Centro</span><span>⌄</span></button></div>
+      <div className="side-bottom"><button className="navitem" onClick={()=>setSection("Configurações")}><Icon name="gear"/>Configurações</button><LogoutButton variant="menu"/><button className="workspace"><span className="building">▥</span><span><small>Unidade atual</small>Bar & Buffet Centro</span><span>⌄</span></button></div>
     </aside>
     <main className="main">
       <SupabaseConnectionStatus />
