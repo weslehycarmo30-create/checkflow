@@ -3,6 +3,7 @@
 import { useMemo, useState, type CSSProperties, type Dispatch, type SetStateAction } from "react";
 import { SupabaseConnectionStatus } from "./supabase-connection-status";
 import { PrivateRouteGuard } from "./private-route-guard";
+import { LogoutButton } from "./logout-button";
 
 type IconName = "home" | "check" | "task" | "team" | "model" | "chart" | "gear" | "search" | "bell" | "plus" | "clock" | "arrow" | "close" | "calendar" | "filter" | "dots";
 
@@ -59,7 +60,7 @@ export default function Home() {
     </aside>
     <main className="main">
       <SupabaseConnectionStatus />
-      <header><div><p className="eyebrow">OPERAÇÃO DE HOJE · BAR & BUFFET CENTRO</p><h1>{section==="Visão geral"?"Bom dia, Wesley":section}</h1><p className="subtitle">{section==="Visão geral"?"Acompanhe a abertura, o preparo dos eventos e o fechamento da operação.":"Rotinas simples, responsáveis definidos e tudo registrado."}</p></div><div className="header-actions"><label className="search"><Icon name="search" size={18}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar checklist, evento ou colaborador..."/></label><button className="iconbtn" aria-label="Notificações" onClick={()=>notify("Você tem 3 pendências operacionais")}><Icon name="bell"/><i>3</i></button><span className="avatar main-avatar">WA</span><button className="primary" onClick={()=>setModal(true)}><Icon name="plus" size={18}/>Novo checklist</button></div></header>
+      <header><div><p className="eyebrow">OPERAÇÃO DE HOJE · BAR & BUFFET CENTRO</p><h1>{section==="Visão geral"?"Bom dia, Wesley":section}</h1><p className="subtitle">{section==="Visão geral"?"Acompanhe a abertura, o preparo dos eventos e o fechamento da operação.":"Rotinas simples, responsáveis definidos e tudo registrado."}</p></div><div className="header-actions"><label className="search"><Icon name="search" size={18}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar checklist, evento ou colaborador..."/></label><button className="iconbtn" aria-label="Notificações" onClick={()=>notify("Você tem 3 pendências operacionais")}><Icon name="bell"/><i>3</i></button><LogoutButton/><button className="primary" onClick={()=>setModal(true)}><Icon name="plus" size={18}/>Novo checklist</button></div></header>
       {section==="Visão geral" && <Dashboard filtered={filtered} done={done} setDone={setDone} taskFilter={taskFilter} setTaskFilter={setTaskFilter} setSection={setSection} notify={notify}/>} 
       {section==="Modelos" && <Models onUse={(n)=>{setModal(true);notify(`Modelo “${n}” selecionado`)}}/>}
       {section!=="Visão geral"&&section!=="Modelos"&&<Generic section={section} setModal={setModal}/>} 
