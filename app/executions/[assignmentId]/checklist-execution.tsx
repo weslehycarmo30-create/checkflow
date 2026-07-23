@@ -14,7 +14,16 @@ type Assignment = {
   assigned_to: string;
 };
 type Checklist = { id: string; name: string; description: string | null; category: string | null };
-type Item = { id: string; prompt: string; answer_type: string; required: boolean; position: number; options?: unknown };
+type Item = {
+  id: string;
+  prompt: string;
+  answer_type: string;
+  required: boolean;
+  position: number;
+  options?: unknown;
+  nonconformity_on_no?: boolean;
+  require_observation_on_failure?: boolean;
+};
 type Section = { id: string; title: string; position: number; checklist_items: Item[] };
 type Execution = { id: string; status: "in_progress" | "paused" | "completed"; started_at: string; completed_at?: string | null };
 type AnswerValue = boolean | string | number | null;
@@ -25,6 +34,8 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
   const [sections,setSections] = useState<Section[]>([]);
   const [execution,setExecution] = useState<Execution | null>(null);
   const [answers,setAnswers] = useState<Record<string,AnswerValue>>({});
+  const [observations,setObservations] = useState<Record<string,string>>({});
+  const [nonConformityItems,setNonConformityItems] = useState<string[]>([]);
   const [userId,setUserId] = useState("");
   const [loading,setLoading] = useState(true);
   const [busy,setBusy] = useState(false);
@@ -42,7 +53,9 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
   const requiredMissing = items.filter(item => {
     if (!item.required) return false;
     const value = answers[item.id];
-    return value === undefined || value === null || value === "";
+    if (value === undefined || value === null || value === "") return true;
+    return item.answer_type==="yes_no" && value==="Não" &&
+      (!observations[item.id]?.trim() || !nonConformityItems.includes(item.id));
   });
 
   const load = async () => {
@@ -69,7 +82,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     setAssignment(currentAssignment);
     const [{ data: checklistRecord, error: checklistError }, { data: sectionData, error: sectionError }, { data: executionData, error: executionError }] = await Promise.all([
       supabase.from("checklists").select("id,name,description,category").eq("id", currentAssignment.checklist_id).maybeSingle(),
-      supabase.from("checklist_sections").select("id,title,position,checklist_items(id,prompt,answer_type,required,position,options)").eq("checklist_id", currentAssignment.checklist_id).order("position"),
+      supabase.from("checklist_sections").select("id,title,position,checklist_items(id,prompt,answer_type,required,position,options,nonconformity_on_no,require_observation_on_failure)").eq("checklist_id", currentAssignment.checklist_id).order("position"),
       supabase.from("checklist_executions").select("id,status,started_at,completed_at").eq("assignment_id", assignmentId).eq("executor_id", user.id).in("status", ["in_progress","paused","completed"]).order("started_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
     if (checklistError || !checklistRecord) setError(checklistError?.message || "Checklist não encontrado.");
@@ -84,11 +97,12 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
       setExecution(executionData as Execution);
       const { data: answerData, error: answerError } = await supabase
         .from("execution_answers")
-        .select("item_id,value")
+        .select("item_id,value,observation")
         .eq("execution_id", executionData.id);
       if (answerError) setError(answerError.message);
       else {
         setAnswers(Object.fromEntries((answerData || []).map(answer=>[answer.item_id,answer.value as AnswerValue])));
+        setObservations(Object.fromEntries((answerData || []).map(answer=>[answer.item_id,answer.observation || ""])));
         const photoAnswers = (answerData || []).filter(answer=>typeof answer.value==="string" && answer.value);
         const signedEntries = await Promise.all(photoAnswers.map(async answer => {
           const { data: signed } = await supabase.storage.from("checkflow-evidence").createSignedUrl(answer.value as string, 3600);
@@ -96,6 +110,12 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
         }));
         setPhotoUrls(Object.fromEntries(signedEntries.filter((entry): entry is readonly [string,string]=>Boolean(entry))));
       }
+      const { data: occurrences, error: occurrenceError } = await supabase
+        .from("non_conformities")
+        .select("item_id")
+        .eq("execution_id", executionData.id);
+      if (occurrenceError) setError(occurrenceError.message);
+      else setNonConformityItems((occurrences || []).map(occurrence=>occurrence.item_id));
     }
     setLoading(false);
   };
@@ -161,7 +181,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     actionLock.current = false;
   };
 
-  const saveAnswer = async (itemId:string,value:AnswerValue) => {
+  const saveAnswer = async (itemId:string,value:AnswerValue,metadata?:{observation?:string;isConforming?:boolean}) => {
     if (!execution || !assignment || execution.status!=="in_progress" || savingItems.includes(itemId)) return;
     setSavingItems(current=>[...current,itemId]);
     setError("");
@@ -172,6 +192,8 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
       execution_id: execution.id,
       item_id: itemId,
       value,
+      observation: metadata?.observation ?? null,
+      is_conforming: metadata?.isConforming ?? null,
       answered_at: new Date().toISOString(),
       created_by: userId,
     }, { onConflict: "execution_id,item_id" }).select("id").maybeSingle();
@@ -181,6 +203,72 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
       setNotice("Resposta salva.");
     }
     setSavingItems(current=>current.filter(id=>id!==itemId));
+  };
+
+  const saveNonConformity = async (item:Item) => {
+    if (!execution || !assignment || execution.status!=="in_progress" || savingItems.includes(item.id)) return;
+    const observation = observations[item.id]?.trim();
+    if (!observation) {
+      setError("Informe a observação antes de registrar a não conformidade.");
+      return;
+    }
+    setSavingItems(current=>[...current,item.id]);
+    setError("");
+    setNotice("");
+    const supabase = await initializeSupabaseBrowserClient();
+    if (!supabase) {
+      setSavingItems(current=>current.filter(id=>id!==item.id));
+      setError("Supabase não configurado.");
+      return;
+    }
+    const { data:answer,error:answerError } = await supabase.from("execution_answers").upsert({
+      organization_id:assignment.organization_id,
+      execution_id:execution.id,
+      item_id:item.id,
+      value:"Não",
+      observation,
+      is_conforming:false,
+      answered_at:new Date().toISOString(),
+      created_by:userId,
+    },{onConflict:"execution_id,item_id"}).select("id").single();
+    if (answerError || !answer) {
+      setSavingItems(current=>current.filter(id=>id!==item.id));
+      setError(answerError?.message || "A resposta não conforme não foi persistida.");
+      return;
+    }
+    const { data:existing,error:lookupError } = await supabase.from("non_conformities")
+      .select("id")
+      .eq("execution_id",execution.id)
+      .eq("item_id",item.id)
+      .limit(1)
+      .maybeSingle();
+    if (lookupError) {
+      setSavingItems(current=>current.filter(id=>id!==item.id));
+      setError(lookupError.message);
+      return;
+    }
+    const occurrenceOperation = existing
+      ? supabase.from("non_conformities").update({observation,answer_id:answer.id}).eq("id",existing.id).select("id").single()
+      : supabase.from("non_conformities").insert({
+          organization_id:assignment.organization_id,
+          execution_id:execution.id,
+          answer_id:answer.id,
+          item_id:item.id,
+          unit_id:assignment.unit_id,
+          executor_id:userId,
+          observation,
+          priority:"medium",
+          status:"open",
+          created_by:userId,
+        }).select("id").single();
+    const { error:occurrenceError } = await occurrenceOperation;
+    if (occurrenceError) setError(occurrenceError.message || "A ocorrência não foi registrada.");
+    else {
+      setAnswers(current=>({...current,[item.id]:"Não"}));
+      setNonConformityItems(current=>current.includes(item.id)?current:[...current,item.id]);
+      setNotice(existing?"Não conformidade atualizada.":"Não conformidade registrada automaticamente.");
+    }
+    setSavingItems(current=>current.filter(id=>id!==item.id));
   };
 
   const uploadPhoto = async (itemId:string,file:File | null) => {
@@ -296,7 +384,27 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     const value = answers[item.id];
     const readOnly = execution?.status!=="in_progress" || savingItems.includes(item.id);
     if (item.answer_type==="checkbox") return <label className="mobile-check"><input type="checkbox" checked={value===true} disabled={readOnly} onChange={event=>saveAnswer(item.id,event.target.checked)}/><span>{savingItems.includes(item.id)?"Salvando...":value===true?"Concluído":"Marcar como concluído"}</span></label>;
-    if (item.answer_type==="yes_no") return <select value={String(value??"")} disabled={readOnly} onChange={event=>saveAnswer(item.id,event.target.value)}><option value="">Selecione</option><option value="Sim">Sim</option><option value="Não">Não</option></select>;
+    if (item.answer_type==="yes_no") {
+      const isFailure = value==="Não";
+      const occurrenceSaved = nonConformityItems.includes(item.id);
+      return <div className="conditional-answer">
+        <select value={String(value??"")} disabled={readOnly} onChange={event=>{
+          const nextValue=event.target.value;
+          if (nextValue==="Não") {
+            setAnswers(current=>({...current,[item.id]:"Não"}));
+            setNotice("");
+          } else {
+            void saveAnswer(item.id,nextValue,{isConforming:nextValue==="Sim"});
+          }
+        }}><option value="">Selecione</option><option value="Sim">Sim</option><option value="Não">Não</option></select>
+        {isFailure&&<div className="failure-details">
+          <label htmlFor={`observation-${item.id}`}>Observação da não conformidade <em>Obrigatória</em></label>
+          <textarea id={`observation-${item.id}`} value={observations[item.id]||""} disabled={readOnly} placeholder="Descreva o que foi encontrado" onChange={event=>setObservations(current=>({...current,[item.id]:event.target.value}))}/>
+          <button type="button" className="secondary" disabled={readOnly||!observations[item.id]?.trim()} onClick={()=>saveNonConformity(item)}>{savingItems.includes(item.id)?"Salvando...":occurrenceSaved?"Atualizar ocorrência":"Registrar não conformidade"}</button>
+          {occurrenceSaved&&<small>Ocorrência registrada e visível para a gestão.</small>}
+        </div>}
+      </div>;
+    }
     if (item.answer_type==="rating") return <select value={String(value??"")} disabled={readOnly} onChange={event=>saveAnswer(item.id,Number(event.target.value))}><option value="">Selecione de 0 a 10</option>{Array.from({length:11},(_,index)=><option key={index} value={index}>{index}</option>)}</select>;
     if (item.answer_type==="single_select") {
       const options = Array.isArray(item.options) ? item.options.filter(option=>typeof option==="string") as string[] : [];

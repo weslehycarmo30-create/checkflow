@@ -166,7 +166,12 @@ export default function ChecklistDetail({ checklistId }: { checklistId: string }
       if (!supabase) { setError("Supabase não configurado."); return; }
       const { data, error: insertError } = await supabase.from("checklist_items").insert({
         organization_id: checklist.organization_id, section_id: sectionId, prompt,
-        answer_type: itemType[sectionId] || "checkbox", required: true, position: section.checklist_items.length, created_by: userId,
+        answer_type: itemType[sectionId] || "checkbox",
+        required: true,
+        position: section.checklist_items.length,
+        nonconformity_on_no: (itemType[sectionId] || "checkbox")==="yes_no",
+        require_observation_on_failure: (itemType[sectionId] || "checkbox")==="yes_no",
+        created_by: userId,
       }).select("id").single();
       if (insertError || !data) { setError(insertError?.message || "O item não foi persistido."); return; }
       setItemPrompt(current=>({...current,[sectionId]:""}));
