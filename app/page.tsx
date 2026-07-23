@@ -15,6 +15,14 @@ type ChecklistListItem = {
   organization_id: string;
   created_by: string | null;
   due_at?: string | null;
+  execution_status?: "in_progress" | "paused" | "completed";
+};
+type HistoryItem = {
+  id: string;
+  checklist_name: string;
+  executor_name: string;
+  completed_at: string;
+  conformity_percentage: number | null;
 };
 
 type IconName = "home" | "check" | "task" | "team" | "model" | "chart" | "gear" | "search" | "bell" | "plus" | "clock" | "arrow" | "close" | "calendar" | "filter" | "dots";
@@ -66,6 +74,7 @@ export default function Home() {
   const [viewerRole,setViewerRole] = useState("");
   const [checklistsLoading,setChecklistsLoading] = useState(true);
   const [checklistsError,setChecklistsError] = useState("");
+  const [history,setHistory] = useState<HistoryItem[]>([]);
   const filtered = useMemo(()=>tasks.filter((t)=> !query || (t.title+t.sub+t.owner).toLowerCase().includes(query.toLowerCase())).filter((t,i)=> taskFilter!=="Minhas" || i===1 || i===3).filter((t)=>taskFilter!=="Atrasadas" || t.tone==="red"),[query,taskFilter]);
   const notify=(msg:string)=>{setToast(msg);setTimeout(()=>setToast(""),2600)};
   const loadChecklists = async () => {
@@ -114,9 +123,18 @@ export default function Home() {
         if (checklistError) setChecklistsError(checklistError.message);
         else {
           const byId = new Map((checklistData || []).map(value=>[value.id,value]));
+          const assignmentIds = (assignmentData || []).map(value=>value.id);
+          const { data: executionData, error: executionError } = assignmentIds.length
+            ? await supabase.from("checklist_executions").select("assignment_id,status,started_at").in("assignment_id", assignmentIds).eq("executor_id", user.id).order("started_at", { ascending: false })
+            : { data: [], error: null };
+          if (executionError) setChecklistsError(executionError.message);
+          const latestByAssignment = new Map<string,string>();
+          for (const execution of executionData || []) {
+            if (execution.assignment_id && !latestByAssignment.has(execution.assignment_id)) latestByAssignment.set(execution.assignment_id,execution.status);
+          }
           setChecklists((assignmentData || []).flatMap(assignment => {
             const record = byId.get(assignment.checklist_id);
-            return record ? [{...record,assignment_id:assignment.id,due_at:assignment.due_at} as ChecklistListItem] : [];
+            return record ? [{...record,assignment_id:assignment.id,due_at:assignment.due_at,execution_status:latestByAssignment.get(assignment.id)} as ChecklistListItem] : [];
           }));
         }
       }
@@ -130,6 +148,33 @@ export default function Home() {
         .order("created_at", { ascending: false });
       if (error) setChecklistsError(error.message);
       else setChecklists((data || []) as ChecklistListItem[]);
+    }
+    const historyQuery = supabase
+      .from("checklist_executions")
+      .select("id,checklist_id,executor_id,completed_at,conformity_percentage")
+      .eq("organization_id", membership.organization_id)
+      .eq("status", "completed")
+      .order("completed_at", { ascending: false })
+      .limit(50);
+    if (membership.role === "collaborator") historyQuery.eq("executor_id", user.id);
+    const { data: historyData, error: historyError } = await historyQuery;
+    if (historyError) setChecklistsError(historyError.message);
+    else {
+      const historyChecklistIds = [...new Set((historyData || []).map(value=>value.checklist_id))];
+      const executorIds = [...new Set((historyData || []).map(value=>value.executor_id))];
+      const [{ data: historyChecklists }, { data: executorProfiles }] = await Promise.all([
+        historyChecklistIds.length ? supabase.from("checklists").select("id,name").in("id", historyChecklistIds) : Promise.resolve({data:[]}),
+        executorIds.length ? supabase.from("profiles").select("id,full_name").in("id", executorIds) : Promise.resolve({data:[]}),
+      ]);
+      const checklistNames = new Map((historyChecklists || []).map(value=>[value.id,value.name]));
+      const executorNames = new Map((executorProfiles || []).map(value=>[value.id,value.full_name || "Colaborador"]));
+      setHistory((historyData || []).filter(value=>value.completed_at).map(value=>({
+        id:value.id,
+        checklist_name:checklistNames.get(value.checklist_id) || "Checklist",
+        executor_name:executorNames.get(value.executor_id) || "Colaborador",
+        completed_at:value.completed_at as string,
+        conformity_percentage:value.conformity_percentage===null?null:Number(value.conformity_percentage),
+      })));
     }
     setChecklistsLoading(false);
   };
@@ -179,7 +224,7 @@ export default function Home() {
       <header><div><p className="eyebrow">OPERAÇÃO DE HOJE · BAR & BUFFET CENTRO</p><h1>{section==="Visão geral"?"Bom dia, Wesley":section}</h1><p className="subtitle">{section==="Visão geral"?"Acompanhe a abertura, o preparo dos eventos e o fechamento da operação.":"Rotinas simples, responsáveis definidos e tudo registrado."}</p></div><div className="header-actions"><label className="search"><Icon name="search" size={18}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar checklist, evento ou colaborador..."/></label><button className="iconbtn" aria-label="Notificações" onClick={()=>notify("Você tem 3 pendências operacionais")}><Icon name="bell"/><i>3</i></button><LogoutButton/>{viewerRole!=="collaborator"&&<button className="primary" onClick={()=>setModal(true)}><Icon name="plus" size={18}/>Novo checklist</button>}</div></header>
       {section==="Visão geral" && <Dashboard filtered={filtered} done={done} setDone={setDone} taskFilter={taskFilter} setTaskFilter={setTaskFilter} setSection={setSection} notify={notify}/>} 
       {section==="Modelos" && <Models onUse={(n)=>{setModal(true);notify(`Modelo “${n}” selecionado`)}}/>}
-      {section!=="Visão geral"&&section!=="Modelos"&&<Generic section={section} setModal={setModal} checklists={checklists} loading={checklistsLoading} error={checklistsError} viewerRole={viewerRole}/>}
+      {section!=="Visão geral"&&section!=="Modelos"&&<Generic section={section} setModal={setModal} checklists={checklists} history={history} loading={checklistsLoading} error={checklistsError} viewerRole={viewerRole}/>}
     </main>
     {modal&&<CreateModal close={()=>setModal(false)} create={createChecklist}/>}
     {toast&&<div className="toast"><span>✓</span>{toast}</div>}
@@ -198,6 +243,6 @@ function Dashboard({filtered,done,setDone,taskFilter,setTaskFilter,setSection,no
 
 function Models({onUse}:{onUse:(n:string)=>void}){return <section><div className="section-toolbar"><div><h2>Modelos para alimentação e eventos</h2><p>Rotinas prontas para adaptar à realidade da sua operação.</p></div><div><button className="secondary"><Icon name="filter" size={17}/>Todas as operações</button><button className="primary"><Icon name="plus" size={17}/>Criar modelo</button></div></div><div className="template-grid">{templates.map(t=><article className="template-card" key={t.title}><div className="template-icon" style={{background:t.color}}>{t.emoji}</div><span className="segment">{t.segment}</span><h3>{t.title}</h3><p>{t.items} itens · editável · pronto para atribuir</p><div><button className="secondary" onClick={()=>onUse(t.title)}>Visualizar</button><button className="primary" onClick={()=>onUse(t.title)}>Usar modelo</button></div></article>)}</div></section>}
 
-function Generic({section,setModal,checklists,loading,error,viewerRole}:{section:string;setModal:(v:boolean)=>void;checklists:ChecklistListItem[];loading:boolean;error:string;viewerRole:string}){const content:Record<string,[string,string,string][]>={"Planos de ação":[["Substituir lote de limão","Rafael · vence hoje","Crítico"],["Regular temperatura do freezer 2","Carla · 11:30","Em andamento"],["Repor álcool 70% no balcão","Lucas · 16:00","Aberto"]],Histórico:[["Fechamento do restaurante","Ontem · Juliana","100%"],["Evento Corporativo Alfa","Ontem · Equipe Eventos","96%"],["Abertura do bar","Hoje · Rafael","78%"]],"Equipe e unidades":[["Bar & Buffet Centro","8 colaboradores","Ativa"],["Cozinha principal","5 colaboradores","Ativa"],["Equipe Bar Premium","6 colaboradores","Em evento"]],Relatórios:[["Resumo operacional diário","Hoje","92%"],["Não conformidades abertas","3 registros","Atenção"],["Execuções por unidade","Últimos 7 dias","34"]],Configurações:[["Dados da empresa","Bar & Buffet Centro","Ativo"],["Perfis e permissões","Gestor e colaborador","Gerenciar"],["Categorias da operação","Bar, cozinha e eventos","6"]]};return <section><div className="section-toolbar"><div><h2>{section}</h2><p>{section==="Operação"?(viewerRole==="collaborator"?"Checklists atribuídos a você, prontos para iniciar ou continuar.":"Checklists reais da sua organização, prontos para editar e atribuir."):"Informações essenciais para manter a rotina sob controle."}</p></div>{viewerRole!=="collaborator"&&<button className="primary" onClick={()=>setModal(true)}><Icon name="plus" size={17}/>{section==="Operação"?"Novo checklist":"Adicionar"}</button>}</div><article className="data-panel"><div className="data-head"><span>Nome</span><span>Categoria</span><span>Status</span><span></span></div>{section==="Operação" ? <>{loading&&<p className="data-state">Carregando checklists...</p>}{error&&<p className="data-state error">{error}</p>}{!loading&&!error&&checklists.length===0&&<p className="data-state">{viewerRole==="collaborator"?"Nenhum checklist atribuído a você.":"Nenhum checklist criado nesta organização."}</p>}{checklists.map((checklist)=><button className="data-row" key={checklist.assignment_id||checklist.id} onClick={()=>{window.location.href=viewerRole==="collaborator"&&checklist.assignment_id?`/executions/${checklist.assignment_id}`:`/checklists/${checklist.id}`}}><span><i className="file-icon"><Icon name="check" size={19}/></i><strong>{checklist.name}</strong></span><span>{checklist.category || "Sem categoria"}</span><span className="status">{viewerRole==="collaborator"?"Iniciar":checklist.status==="draft"?"Rascunho":"Ativo"}</span><Icon name="arrow"/></button>)}</> : (content[section]||[]).map((r)=><button className="data-row" key={r[0]}><span><i className="file-icon"><Icon name={section==="Equipe e unidades"?"team":section==="Relatórios"?"chart":section==="Histórico"?"calendar":"check"} size={19}/></i><strong>{r[0]}</strong></span><span>{r[1]}</span><span className={r[2]==="Crítico"||r[2]==="Atenção"?"status danger":"status"}>{r[2]}</span><Icon name="dots"/></button>)}</article></section>}
+function Generic({section,setModal,checklists,history,loading,error,viewerRole}:{section:string;setModal:(v:boolean)=>void;checklists:ChecklistListItem[];history:HistoryItem[];loading:boolean;error:string;viewerRole:string}){const content:Record<string,[string,string,string][]>={"Planos de ação":[["Substituir lote de limão","Rafael · vence hoje","Crítico"],["Regular temperatura do freezer 2","Carla · 11:30","Em andamento"],["Repor álcool 70% no balcão","Lucas · 16:00","Aberto"]],"Equipe e unidades":[["Bar & Buffet Centro","8 colaboradores","Ativa"],["Cozinha principal","5 colaboradores","Ativa"],["Equipe Bar Premium","6 colaboradores","Em evento"]],Relatórios:[["Resumo operacional diário","Hoje","92%"],["Não conformidades abertas","3 registros","Atenção"],["Execuções por unidade","Últimos 7 dias","34"]],Configurações:[["Dados da empresa","Bar & Buffet Centro","Ativo"],["Perfis e permissões","Gestor e colaborador","Gerenciar"],["Categorias da operação","Bar, cozinha e eventos","6"]]};const operationStatus=(checklist:ChecklistListItem)=>checklist.execution_status==="completed"?"Concluído":checklist.execution_status==="paused"?"Continuar":checklist.execution_status==="in_progress"?"Em execução":"Iniciar";return <section><div className="section-toolbar"><div><h2>{section}</h2><p>{section==="Operação"?(viewerRole==="collaborator"?"Checklists atribuídos a você, com o status real da execução.":"Checklists reais da sua organização, prontos para editar e atribuir."):section==="Histórico"?"Execuções concluídas registradas no Supabase.":"Informações essenciais para manter a rotina sob controle."}</p></div>{viewerRole!=="collaborator"&&section!=="Histórico"&&<button className="primary" onClick={()=>setModal(true)}><Icon name="plus" size={17}/>{section==="Operação"?"Novo checklist":"Adicionar"}</button>}</div><article className="data-panel"><div className="data-head"><span>Nome</span><span>{section==="Histórico"?"Executor":"Categoria"}</span><span>{section==="Histórico"?"Conclusão":"Status"}</span><span></span></div>{section==="Operação" ? <>{loading&&<p className="data-state">Carregando checklists...</p>}{error&&<p className="data-state error">{error}</p>}{!loading&&!error&&checklists.length===0&&<p className="data-state">{viewerRole==="collaborator"?"Nenhum checklist atribuído a você.":"Nenhum checklist criado nesta organização."}</p>}{checklists.map((checklist)=><button className="data-row" key={checklist.assignment_id||checklist.id} onClick={()=>{window.location.href=viewerRole==="collaborator"&&checklist.assignment_id?`/executions/${checklist.assignment_id}`:`/checklists/${checklist.id}`}}><span><i className="file-icon"><Icon name="check" size={19}/></i><strong>{checklist.name}</strong></span><span>{checklist.category || "Sem categoria"}</span><span className={`status ${checklist.execution_status==="completed"?"completed-label":""}`}>{viewerRole==="collaborator"?operationStatus(checklist):checklist.status==="draft"?"Rascunho":"Ativo"}</span><Icon name="arrow"/></button>)}</> : section==="Histórico" ? <>{loading&&<p className="data-state">Carregando histórico...</p>}{!loading&&history.length===0&&<p className="data-state">Nenhuma execução concluída.</p>}{history.map(record=><div className="data-row history-row" key={record.id}><span><i className="file-icon"><Icon name="calendar" size={19}/></i><strong>{record.checklist_name}</strong></span><span>{record.executor_name}</span><span className="status completed-label">{new Date(record.completed_at).toLocaleString("pt-BR")} · {record.conformity_percentage??0}%</span><Icon name="check"/></div>)}</> : (content[section]||[]).map((r)=><button className="data-row" key={r[0]}><span><i className="file-icon"><Icon name={section==="Equipe e unidades"?"team":section==="Relatórios"?"chart":"check"} size={19}/></i><strong>{r[0]}</strong></span><span>{r[1]}</span><span className={r[2]==="Crítico"||r[2]==="Atenção"?"status danger":"status"}>{r[2]}</span><Icon name="dots"/></button>)}</article></section>}
 
 function CreateModal({close,create}:{close:()=>void,create:(n:string,category:string)=>Promise<void>}){const [name,setName]=useState("");const [segment,setSegment]=useState("Bar");const [busy,setBusy]=useState(false);return <div className="overlay" onMouseDown={e=>e.target===e.currentTarget&&close()}><div className="modal"><button className="modal-close" onClick={close} aria-label="Fechar"><Icon name="close"/></button><span className="modal-icon"><Icon name="check"/></span><h2>Novo checklist</h2><p>Crie uma rotina e já deixe pronta para editar e atribuir à equipe.</p><label>Nome do checklist<input autoFocus value={name} onChange={e=>setName(e.target.value)} placeholder="Ex.: Abertura da estação de bar"/></label><label>Área da operação<select value={segment} onChange={e=>setSegment(e.target.value)}><option>Bar</option><option>Cozinha</option><option>Buffet</option><option>Evento</option><option>Estoque</option><option>Higienização</option></select></label><div className="modal-actions"><button className="secondary" onClick={close}>Cancelar</button><button className="primary" disabled={!name.trim()||busy} onClick={async()=>{setBusy(true);await create(name,segment);setBusy(false)}}>{busy?"Salvando...":"Criar checklist"}</button></div></div></div>}
