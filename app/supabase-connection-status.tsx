@@ -9,9 +9,7 @@ import {
 type ConnectionState = "checking" | "ready" | "error";
 
 export function SupabaseConnectionStatus() {
-  const [state, setState] = useState<ConnectionState>(
-    supabaseConfiguration.configured ? "checking" : "error",
-  );
+  const [state, setState] = useState<ConnectionState>("checking");
 
   useEffect(() => {
     initializeSupabaseBrowserClient()
@@ -30,6 +28,13 @@ export function SupabaseConnectionStatus() {
     <section className="configuration-notice" role="status">
       <strong>Configuração do Supabase pendente</strong>
       <span>{detail}</span>
+      <button type="button" onClick={() => {
+        setState("checking");
+        initializeSupabaseBrowserClient()
+          .then((client) => client?.auth.getSession())
+          .then((result) => setState(result && !result.error ? "ready" : "error"))
+          .catch(() => setState("error"));
+      }}>Tentar novamente</button>
     </section>
   );
 }

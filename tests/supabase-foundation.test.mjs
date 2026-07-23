@@ -23,6 +23,13 @@ test("frontend only accepts public Supabase keys", () => {
   assert.doesNotMatch(client, /SERVICE_ROLE|service_role/);
 });
 
+test("mobile initialization retries transient config failures and preserves a public fallback", () => {
+  assert.match(client, /checkflow:supabase-public-config/);
+  assert.match(client, /attempt < 3/);
+  assert.match(client, /AbortController/);
+  assert.match(client, /initialization = null/);
+});
+
 test("hardening prevents cross-tenant links and manager role escalation", () => {
   assert.match(hardening, /validate_checkflow_tenant_links/);
   assert.match(hardening, /organization_members_owner_write/);
