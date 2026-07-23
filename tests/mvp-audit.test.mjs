@@ -5,6 +5,8 @@ import test from "node:test";
 const home = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 const execution = await readFile(new URL("../app/executions/[assignmentId]/checklist-execution.tsx", import.meta.url), "utf8");
 const historyDetail = await readFile(new URL("../app/history/[executionId]/execution-history-detail.tsx", import.meta.url), "utf8");
+const actionPlans = await readFile(new URL("../app/action-plans/action-plans.tsx", import.meta.url), "utf8");
+const actionPlanRls = await readFile(new URL("../supabase/migrations/202607230003_action_plan_minimal_rls.sql", import.meta.url), "utf8");
 
 test("dashboard no longer presents the former fictional operation as real", () => {
   for (const fictional of ["Casamento Silva", "Rafael S.", "Carla M.", "92%"]) {
@@ -46,4 +48,17 @@ test("manager operation reflects execution status and photo detail has a persist
   assert.match(historyDetail, /photoItemIds/);
   assert.match(historyDetail, /typeof answer\.value==="string"/);
   assert.match(historyDetail, /createSignedUrl\(storagePath,3600\)/);
+});
+
+test("minimal action plan stays within the approved operational flow", () => {
+  assert.match(actionPlans, /\.from\("action_plans"\)/);
+  assert.match(actionPlans, /responsible_user_id/);
+  assert.match(actionPlans, /due_at/);
+  assert.match(actionPlans, /awaiting_validation/);
+  assert.match(actionPlans, /checkflow-evidence/);
+  assert.match(actionPlans, /Aprovar correção/);
+  assert.match(actionPlans, /Reprovar/);
+  assert.doesNotMatch(actionPlans, /notifica|SLA|inteligência artificial/i);
+  assert.match(actionPlanRls, /collaborator_action_plan_update/);
+  assert.match(actionPlanRls, /enforce_action_plan_collaborator_update/);
 });

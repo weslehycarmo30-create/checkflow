@@ -250,7 +250,7 @@ export default function Home() {
     <button className="mobile-menu" onClick={()=>setMobile(!mobile)} aria-label="Abrir menu">☰</button>
     <aside className={mobile?"sidebar open":"sidebar"}>
       <div className="brand"><span className="brandmark">✓</span><span>CheckFlow</span></div>
-      <nav>{nav.map(([label,icon])=><button key={label} className={section===label?"navitem active":"navitem"} onClick={()=>{setSection(label);setMobile(false)}}><Icon name={icon}/><span>{label}</span></button>)}</nav>
+      <nav>{nav.map(([label,icon])=><button key={label} className={section===label?"navitem active":"navitem"} onClick={()=>{if(label==="Planos de ação"){window.location.href="/action-plans";return}setSection(label);setMobile(false)}}><Icon name={icon}/><span>{label}</span></button>)}</nav>
       <div className="side-bottom"><button className="navitem" onClick={()=>setSection("Configurações")}><Icon name="gear"/>Configurações</button><LogoutButton variant="menu"/><div className="workspace workspace-static"><span className="building">▥</span><span><small>Organização atual</small>{organizationName}</span></div></div>
     </aside>
     <main className="main">
