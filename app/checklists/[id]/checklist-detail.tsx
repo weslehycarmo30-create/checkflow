@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PrivateRouteGuard } from "../../private-route-guard";
 import { initializeSupabaseBrowserClient } from "../../../lib/supabase";
 
@@ -47,7 +47,22 @@ export default function ChecklistDetail({ checklistId }: { checklistId: string }
   const [assignedTo,setAssignedTo] = useState("");
   const [unitId,setUnitId] = useState("");
   const [dueAt,setDueAt] = useState("");
+  const [busy,setBusy] = useState(false);
+  const actionLock = useRef(false);
   const canManage = role === "owner" || role === "manager";
+
+  const beginAction = () => {
+    if (actionLock.current || !canManage) return false;
+    actionLock.current = true;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    return true;
+  };
+  const endAction = () => {
+    actionLock.current = false;
+    setBusy(false);
+  };
 
   const load = async () => {
     setLoading(true);
@@ -111,50 +126,59 @@ export default function ChecklistDetail({ checklistId }: { checklistId: string }
   },[checklistId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveChecklist = async () => {
-    const supabase = await initializeSupabaseBrowserClient();
-    if (!supabase || !checklist) return;
-    const { error: updateError } = await supabase.from("checklists").update({
-      name: name.trim(), description: description.trim() || null, category: category.trim() || null,
-    }).eq("id", checklist.id).eq("organization_id", checklist.organization_id);
-    if (updateError) { setError(updateError.message); return; }
-    setChecklist({...checklist,name:name.trim(),description:description.trim()||null,category:category.trim()||null});
-    setEditing(false);
-    setNotice("Checklist atualizado.");
+    if (!checklist || !name.trim() || !beginAction()) return;
+    try {
+      const supabase = await initializeSupabaseBrowserClient();
+      if (!supabase) { setError("Supabase não configurado."); return; }
+      const { data, error: updateError } = await supabase.from("checklists").update({
+        name: name.trim(), description: description.trim() || null, category: category.trim() || null,
+      }).eq("id", checklist.id).eq("organization_id", checklist.organization_id).select("id").maybeSingle();
+      if (updateError || !data) { setError(updateError?.message || "A alteração não foi persistida."); return; }
+      setChecklist({...checklist,name:name.trim(),description:description.trim()||null,category:category.trim()||null});
+      setEditing(false);
+      setNotice("Checklist atualizado e confirmado no banco.");
+    } finally { endAction(); }
   };
 
   const addSection = async () => {
-    if (!sectionTitle.trim() || !checklist) return;
-    const supabase = await initializeSupabaseBrowserClient();
-    if (!supabase) return;
-    const { error: insertError } = await supabase.from("checklist_sections").insert({
-      organization_id: checklist.organization_id, checklist_id: checklist.id, title: sectionTitle.trim(),
-      position: sections.length, created_by: userId,
-    });
-    if (insertError) { setError(insertError.message); return; }
-    setSectionTitle("");
-    await load();
+    if (!sectionTitle.trim() || !checklist || !beginAction()) return;
+    try {
+      const supabase = await initializeSupabaseBrowserClient();
+      if (!supabase) { setError("Supabase não configurado."); return; }
+      const { data, error: insertError } = await supabase.from("checklist_sections").insert({
+        organization_id: checklist.organization_id, checklist_id: checklist.id, title: sectionTitle.trim(),
+        position: sections.length, created_by: userId,
+      }).select("id").single();
+      if (insertError || !data) { setError(insertError?.message || "A seção não foi persistida."); return; }
+      setSectionTitle("");
+      await load();
+      setNotice("Seção adicionada.");
+    } finally { endAction(); }
   };
 
   const addItem = async (sectionId:string) => {
     const prompt = itemPrompt[sectionId]?.trim();
     const section = sections.find(value=>value.id===sectionId);
-    if (!prompt || !checklist || !section) return;
-    const supabase = await initializeSupabaseBrowserClient();
-    if (!supabase) return;
-    const { error: insertError } = await supabase.from("checklist_items").insert({
-      organization_id: checklist.organization_id, section_id: sectionId, prompt,
-      answer_type: "checkbox", required: true, position: section.checklist_items.length, created_by: userId,
-    });
-    if (insertError) { setError(insertError.message); return; }
-    setItemPrompt(current=>({...current,[sectionId]:""}));
-    await load();
+    if (!prompt || !checklist || !section || !beginAction()) return;
+    try {
+      const supabase = await initializeSupabaseBrowserClient();
+      if (!supabase) { setError("Supabase não configurado."); return; }
+      const { data, error: insertError } = await supabase.from("checklist_items").insert({
+        organization_id: checklist.organization_id, section_id: sectionId, prompt,
+        answer_type: "checkbox", required: true, position: section.checklist_items.length, created_by: userId,
+      }).select("id").single();
+      if (insertError || !data) { setError(insertError?.message || "O item não foi persistido."); return; }
+      setItemPrompt(current=>({...current,[sectionId]:""}));
+      await load();
+      setNotice("Item adicionado.");
+    } finally { endAction(); }
   };
 
   const assign = async () => {
     if (!checklist || !assignedTo) { setError("Selecione um colaborador."); return; }
+    if (!beginAction()) return;
     const supabase = await initializeSupabaseBrowserClient();
-    if (!supabase) return;
-    setError("");
+    if (!supabase) { setError("Supabase não configurado."); endAction(); return; }
     const assignmentValues = {
       unit_id: unitId || null,
       due_at: dueAt ? new Date(dueAt).toISOString() : null,
@@ -169,7 +193,7 @@ export default function ChecklistDetail({ checklistId }: { checklistId: string }
       .eq("assigned_to", assignedTo)
       .eq("active", true)
       .order("created_at");
-    if (existingError) { setError(existingError.message); return; }
+    if (existingError) { setError(existingError.message); endAction(); return; }
     let assignmentError = null;
     if (existing && existing.length > 0) {
       const { error: updateError } = await supabase.from("checklist_assignments").update(assignmentValues).eq("id", existing[0].id);
@@ -186,17 +210,18 @@ export default function ChecklistDetail({ checklistId }: { checklistId: string }
       });
       assignmentError = insertError;
     }
-    if (assignmentError) { setError(assignmentError.message); return; }
+    if (assignmentError) { setError(assignmentError.message); endAction(); return; }
     setNotice(existing?.length ? "Atribuição atualizada sem duplicidade." : "Checklist atribuído com sucesso.");
     setAssignedTo(""); setUnitId(""); setDueAt("");
     await load();
+    endAction();
   };
 
   return <main className="detail-page">
     <PrivateRouteGuard />
     <button className="back-link" onClick={()=>{window.location.href="/"}}>← Voltar para a lista</button>
     {loading&&<section className="detail-card"><p>Carregando checklist...</p></section>}
-    {!loading&&error&&!checklist&&<section className="detail-card detail-error"><h1>Acesso indisponível</h1><p>{error}</p></section>}
+    {!loading&&error&&!checklist&&<section className="detail-card detail-error"><h1>Acesso indisponível</h1><p>{error}</p><button className="secondary" onClick={load}>Tentar novamente</button></section>}
     {!loading&&checklist&&<div className="detail-layout">
       <section>
         <article className="detail-card">
@@ -204,16 +229,16 @@ export default function ChecklistDetail({ checklistId }: { checklistId: string }
             <div><span className="segment">{checklist.category || "Sem categoria"}</span><h1>{checklist.name}</h1><p>{checklist.description || "Sem descrição."}</p></div>
             {canManage&&<button className="secondary" onClick={()=>setEditing(!editing)}>{editing?"Cancelar":"Editar"}</button>}
           </div>
-          {editing&&<div className="edit-form"><label>Nome<input value={name} onChange={event=>setName(event.target.value)}/></label><label>Descrição<textarea value={description} onChange={event=>setDescription(event.target.value)}/></label><label>Categoria<input value={category} onChange={event=>setCategory(event.target.value)}/></label><button className="primary" disabled={!name.trim()} onClick={saveChecklist}>Salvar alterações</button></div>}
+          {editing&&<div className="edit-form"><label>Nome<input value={name} onChange={event=>setName(event.target.value)}/></label><label>Descrição<textarea value={description} onChange={event=>setDescription(event.target.value)}/></label><label>Categoria<input value={category} onChange={event=>setCategory(event.target.value)}/></label><button className="primary" disabled={!name.trim()||busy} onClick={saveChecklist}>{busy?"Salvando...":"Salvar alterações"}</button></div>}
         </article>
         <article className="detail-card">
           <div className="detail-heading"><div><h2>Seções e itens</h2><p>Conteúdo atual deste checklist.</p></div></div>
           {sections.length===0&&<p className="empty-state">Nenhuma seção cadastrada.</p>}
-          {sections.map(section=><div className="checklist-section" key={section.id}><h3>{section.title}</h3>{section.checklist_items.length===0&&<p className="empty-state">Nenhum item nesta seção.</p>}{section.checklist_items.map(item=><div className="checklist-item" key={item.id}><span className="item-check item-unanswered" aria-label="Item ainda não executado"></span><span><strong>{item.prompt}</strong><small>{item.required?"Obrigatório":"Opcional"} · {item.answer_type}</small></span></div>)}{canManage&&<div className="inline-create"><input value={itemPrompt[section.id]||""} onChange={event=>setItemPrompt(current=>({...current,[section.id]:event.target.value}))} placeholder="Novo item obrigatório"/><button className="secondary" onClick={()=>addItem(section.id)}>Adicionar item</button></div>}</div>)}
-          {canManage&&<div className="inline-create section-create"><input value={sectionTitle} onChange={event=>setSectionTitle(event.target.value)} placeholder="Nome da nova seção"/><button className="secondary" onClick={addSection}>Adicionar seção</button></div>}
+          {sections.map(section=><div className="checklist-section" key={section.id}><h3>{section.title}</h3>{section.checklist_items.length===0&&<p className="empty-state">Nenhum item nesta seção.</p>}{section.checklist_items.map(item=><div className="checklist-item" key={item.id}><span className="item-check item-unanswered" aria-label="Item ainda não executado"></span><span><strong>{item.prompt}</strong><small>{item.required?"Obrigatório":"Opcional"} · {item.answer_type}</small></span></div>)}{canManage&&<div className="inline-create"><input value={itemPrompt[section.id]||""} disabled={busy} onChange={event=>setItemPrompt(current=>({...current,[section.id]:event.target.value}))} placeholder="Novo item obrigatório"/><button className="secondary" disabled={busy||!itemPrompt[section.id]?.trim()} onClick={()=>addItem(section.id)}>{busy?"Salvando...":"Adicionar item"}</button></div>}</div>)}
+          {canManage&&<div className="inline-create section-create"><input value={sectionTitle} disabled={busy} onChange={event=>setSectionTitle(event.target.value)} placeholder="Nome da nova seção"/><button className="secondary" disabled={busy||!sectionTitle.trim()} onClick={addSection}>{busy?"Salvando...":"Adicionar seção"}</button></div>}
         </article>
       </section>
-      {canManage&&<aside className="detail-card assignment-card"><h2>Atribuir checklist</h2><p>Defina o colaborador e, se necessário, unidade e prazo.</p><label>Colaborador<select value={assignedTo} onChange={event=>setAssignedTo(event.target.value)}><option value="">Selecione</option>{members.filter(member=>member.role==="collaborator").map(member=><option key={member.user_id} value={member.user_id}>{member.full_name}</option>)}</select></label><label>Unidade<select value={unitId} onChange={event=>setUnitId(event.target.value)}><option value="">Sem unidade</option>{units.map(unit=><option key={unit.id} value={unit.id}>{unit.name}</option>)}</select></label><label>Prazo<input type="datetime-local" value={dueAt} onChange={event=>setDueAt(event.target.value)}/></label><button className="primary" onClick={assign}>Atribuir ao colaborador</button><div className="current-assignments"><h3>Atribuições atuais</h3>{assignments.length===0&&<p>Nenhum colaborador atribuído.</p>}{assignments.map(assignment=><div className="assignment-row" key={assignment.id}><span className="assignment-avatar">{assignment.collaborator_name.slice(0,2).toUpperCase()}</span><span><strong>{assignment.collaborator_name}</strong><small>{assignment.unit_name || "Sem unidade"}{assignment.due_at?` · ${new Date(assignment.due_at).toLocaleString("pt-BR")}`:" · sem prazo"}</small></span></div>)}</div></aside>}
+      {canManage&&<aside className="detail-card assignment-card"><h2>Atribuir checklist</h2><p>Defina o colaborador e, se necessário, unidade e prazo.</p><label>Colaborador<select disabled={busy} value={assignedTo} onChange={event=>setAssignedTo(event.target.value)}><option value="">Selecione</option>{members.filter(member=>member.role==="collaborator").map(member=><option key={member.user_id} value={member.user_id}>{member.full_name}</option>)}</select></label><label>Unidade<select disabled={busy} value={unitId} onChange={event=>setUnitId(event.target.value)}><option value="">Sem unidade</option>{units.map(unit=><option key={unit.id} value={unit.id}>{unit.name}</option>)}</select></label><label>Prazo<input disabled={busy} type="datetime-local" value={dueAt} onChange={event=>setDueAt(event.target.value)}/></label><button className="primary" disabled={busy||!assignedTo} onClick={assign}>{busy?"Salvando...":"Atribuir ao colaborador"}</button><div className="current-assignments"><h3>Atribuições atuais</h3>{assignments.length===0&&<p>Nenhum colaborador atribuído.</p>}{assignments.map(assignment=><div className="assignment-row" key={assignment.id}><span className="assignment-avatar">{assignment.collaborator_name.slice(0,2).toUpperCase()}</span><span><strong>{assignment.collaborator_name}</strong><small>{assignment.unit_name || "Sem unidade"}{assignment.due_at?` · ${new Date(assignment.due_at).toLocaleString("pt-BR")}`:" · sem prazo"}</small></span></div>)}</div></aside>}
     </div>}
     {error&&checklist&&<p className="detail-message error">{error}</p>}
     {notice&&<p className="detail-message">{notice}</p>}
