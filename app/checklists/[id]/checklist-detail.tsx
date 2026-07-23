@@ -17,12 +17,22 @@ type Item = { id: string; prompt: string; answer_type: string; required: boolean
 type Section = { id: string; title: string; position: number; checklist_items: Item[] };
 type Member = { user_id: string; role: string; full_name: string };
 type Unit = { id: string; name: string };
+type Assignment = {
+  id: string;
+  assigned_to: string;
+  unit_id: string | null;
+  due_at: string | null;
+  active: boolean;
+  collaborator_name: string;
+  unit_name: string | null;
+};
 
 export default function ChecklistDetail({ checklistId }: { checklistId: string }) {
   const [checklist,setChecklist] = useState<Checklist | null>(null);
   const [sections,setSections] = useState<Section[]>([]);
   const [members,setMembers] = useState<Member[]>([]);
   const [units,setUnits] = useState<Unit[]>([]);
+  const [assignments,setAssignments] = useState<Assignment[]>([]);
   const [role,setRole] = useState("");
   const [userId,setUserId] = useState("");
   const [loading,setLoading] = useState(true);
@@ -63,11 +73,12 @@ export default function ChecklistDetail({ checklistId }: { checklistId: string }
     setName(current.name);
     setDescription(current.description || "");
     setCategory(current.category || "");
-    const [{ data: membership }, { data: sectionData, error: sectionError }, { data: memberData }, { data: unitData }] = await Promise.all([
+    const [{ data: membership }, { data: sectionData, error: sectionError }, { data: memberData }, { data: unitData }, { data: assignmentData, error: assignmentLoadError }] = await Promise.all([
       supabase.from("organization_members").select("role").eq("organization_id", current.organization_id).eq("user_id", user.id).eq("active", true).maybeSingle(),
       supabase.from("checklist_sections").select("id,title,position,checklist_items(id,prompt,answer_type,required,position)").eq("checklist_id", checklistId).order("position"),
       supabase.from("organization_members").select("user_id,role").eq("organization_id", current.organization_id).eq("active", true),
       supabase.from("units").select("id,name").eq("organization_id", current.organization_id).eq("active", true).order("name"),
+      supabase.from("checklist_assignments").select("id,assigned_to,unit_id,due_at,active").eq("checklist_id", checklistId).eq("active", true).order("created_at"),
     ]);
     setRole(membership?.role || "");
     if (sectionError) setError(sectionError.message);
@@ -81,7 +92,15 @@ export default function ChecklistDetail({ checklistId }: { checklistId: string }
       : { data: [] };
     const names = new Map((profiles || []).map(profile => [profile.id, profile.full_name || "Usuário"]));
     setMembers((memberData || []).map(member => ({ ...member, full_name: names.get(member.user_id) || "Usuário" })));
-    setUnits((unitData || []) as Unit[]);
+    const loadedUnits = (unitData || []) as Unit[];
+    const unitNames = new Map(loadedUnits.map(unit => [unit.id, unit.name]));
+    setUnits(loadedUnits);
+    if (assignmentLoadError) setError(assignmentLoadError.message);
+    setAssignments((assignmentData || []).map(assignment => ({
+      ...assignment,
+      collaborator_name: names.get(assignment.assigned_to) || "Usuário",
+      unit_name: assignment.unit_id ? unitNames.get(assignment.unit_id) || "Unidade" : null,
+    })));
     setLoading(false);
   };
 
@@ -135,14 +154,42 @@ export default function ChecklistDetail({ checklistId }: { checklistId: string }
     if (!checklist || !assignedTo) { setError("Selecione um colaborador."); return; }
     const supabase = await initializeSupabaseBrowserClient();
     if (!supabase) return;
-    const { error: assignmentError } = await supabase.from("checklist_assignments").insert({
-      organization_id: checklist.organization_id, checklist_id: checklist.id, assigned_to: assignedTo,
-      unit_id: unitId || null, due_at: dueAt ? new Date(dueAt).toISOString() : null,
-      recurrence: "none", active: true, created_by: userId,
-    });
+    setError("");
+    const assignmentValues = {
+      unit_id: unitId || null,
+      due_at: dueAt ? new Date(dueAt).toISOString() : null,
+      recurrence: "none",
+      active: true,
+    };
+    const { data: existing, error: existingError } = await supabase
+      .from("checklist_assignments")
+      .select("id")
+      .eq("organization_id", checklist.organization_id)
+      .eq("checklist_id", checklist.id)
+      .eq("assigned_to", assignedTo)
+      .eq("active", true)
+      .order("created_at");
+    if (existingError) { setError(existingError.message); return; }
+    let assignmentError = null;
+    if (existing && existing.length > 0) {
+      const { error: updateError } = await supabase.from("checklist_assignments").update(assignmentValues).eq("id", existing[0].id);
+      assignmentError = updateError;
+      if (!assignmentError && existing.length > 1) {
+        const duplicateIds = existing.slice(1).map(value=>value.id);
+        const { error: cleanupError } = await supabase.from("checklist_assignments").update({ active: false }).in("id", duplicateIds);
+        assignmentError = cleanupError;
+      }
+    } else {
+      const { error: insertError } = await supabase.from("checklist_assignments").insert({
+        organization_id: checklist.organization_id, checklist_id: checklist.id, assigned_to: assignedTo,
+        ...assignmentValues, created_by: userId,
+      });
+      assignmentError = insertError;
+    }
     if (assignmentError) { setError(assignmentError.message); return; }
-    setNotice("Checklist atribuído com sucesso.");
+    setNotice(existing?.length ? "Atribuição atualizada sem duplicidade." : "Checklist atribuído com sucesso.");
     setAssignedTo(""); setUnitId(""); setDueAt("");
+    await load();
   };
 
   return <main className="detail-page">
@@ -166,7 +213,7 @@ export default function ChecklistDetail({ checklistId }: { checklistId: string }
           {canManage&&<div className="inline-create section-create"><input value={sectionTitle} onChange={event=>setSectionTitle(event.target.value)} placeholder="Nome da nova seção"/><button className="secondary" onClick={addSection}>Adicionar seção</button></div>}
         </article>
       </section>
-      {canManage&&<aside className="detail-card assignment-card"><h2>Atribuir checklist</h2><p>Defina o colaborador e, se necessário, unidade e prazo.</p><label>Colaborador<select value={assignedTo} onChange={event=>setAssignedTo(event.target.value)}><option value="">Selecione</option>{members.filter(member=>member.role==="collaborator").map(member=><option key={member.user_id} value={member.user_id}>{member.full_name}</option>)}</select></label><label>Unidade<select value={unitId} onChange={event=>setUnitId(event.target.value)}><option value="">Sem unidade</option>{units.map(unit=><option key={unit.id} value={unit.id}>{unit.name}</option>)}</select></label><label>Prazo<input type="datetime-local" value={dueAt} onChange={event=>setDueAt(event.target.value)}/></label><button className="primary" onClick={assign}>Atribuir ao colaborador</button></aside>}
+      {canManage&&<aside className="detail-card assignment-card"><h2>Atribuir checklist</h2><p>Defina o colaborador e, se necessário, unidade e prazo.</p><label>Colaborador<select value={assignedTo} onChange={event=>setAssignedTo(event.target.value)}><option value="">Selecione</option>{members.filter(member=>member.role==="collaborator").map(member=><option key={member.user_id} value={member.user_id}>{member.full_name}</option>)}</select></label><label>Unidade<select value={unitId} onChange={event=>setUnitId(event.target.value)}><option value="">Sem unidade</option>{units.map(unit=><option key={unit.id} value={unit.id}>{unit.name}</option>)}</select></label><label>Prazo<input type="datetime-local" value={dueAt} onChange={event=>setDueAt(event.target.value)}/></label><button className="primary" onClick={assign}>Atribuir ao colaborador</button><div className="current-assignments"><h3>Atribuições atuais</h3>{assignments.length===0&&<p>Nenhum colaborador atribuído.</p>}{assignments.map(assignment=><div className="assignment-row" key={assignment.id}><span className="assignment-avatar">{assignment.collaborator_name.slice(0,2).toUpperCase()}</span><span><strong>{assignment.collaborator_name}</strong><small>{assignment.unit_name || "Sem unidade"}{assignment.due_at?` · ${new Date(assignment.due_at).toLocaleString("pt-BR")}`:" · sem prazo"}</small></span></div>)}</div></aside>}
     </div>}
     {error&&checklist&&<p className="detail-message error">{error}</p>}
     {notice&&<p className="detail-message">{notice}</p>}
