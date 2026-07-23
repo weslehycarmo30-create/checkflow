@@ -103,9 +103,23 @@ export default function ExecutionHistoryDetail({executionId}:{executionId:string
     setSections(((sectionRows || []) as Section[]).map(section=>({...section,checklist_items:[...(section.checklist_items||[])].sort((a,b)=>a.position-b.position)})));
     setAnswers((answerRows || []) as Answer[]);
     setOccurrences((occurrenceRows || []) as Occurrence[]);
-    const signedEntries = await Promise.all((attachmentRows || []).map(async attachment=>{
-      const {data:signed} = await supabase.storage.from("checkflow-evidence").createSignedUrl(attachment.storage_path,3600);
-      return signed?.signedUrl && attachment.answer_id ? [attachment.answer_id,signed.signedUrl] as const : null;
+    const answerById = new Map((answerRows || []).map(answer=>[answer.id,answer]));
+    const photoItemIds = new Set(((sectionRows || []) as Section[]).flatMap(section=>
+      (section.checklist_items || []).filter(item=>item.answer_type==="photo").map(item=>item.id)
+    ));
+    const evidencePaths = new Map<string,string>();
+    for (const attachment of attachmentRows || []) {
+      if (attachment.answer_id) evidencePaths.set(attachment.answer_id,attachment.storage_path);
+    }
+    for (const answer of answerRows || []) {
+      if (!evidencePaths.has(answer.id) && photoItemIds.has(answer.item_id) && typeof answer.value==="string" && answer.value) {
+        evidencePaths.set(answer.id,answer.value);
+      }
+    }
+    const signedEntries = await Promise.all([...evidencePaths.entries()].map(async ([answerId,storagePath])=>{
+      const {data:signed,error:signedError} = await supabase.storage.from("checkflow-evidence").createSignedUrl(storagePath,3600);
+      if (signedError) return null;
+      return signed?.signedUrl && answerById.has(answerId) ? [answerId,signed.signedUrl] as const : null;
     }));
     setPhotoUrls(Object.fromEntries(signedEntries.filter((entry):entry is readonly [string,string]=>Boolean(entry))));
     setLoading(false);

@@ -39,3 +39,11 @@ test("manager history opens the real completed execution and its evidence", () =
   assert.match(historyDetail, /createSignedUrl/);
   assert.doesNotMatch(home, /Planos de ação"&&<b>3<\/b>/);
 });
+
+test("manager operation reflects execution status and photo detail has a persisted-value fallback", () => {
+  assert.match(home, /latestByChecklist/);
+  assert.match(home, /checklist\.execution_status\?operationStatus\(checklist\)/);
+  assert.match(historyDetail, /photoItemIds/);
+  assert.match(historyDetail, /typeof answer\.value==="string"/);
+  assert.match(historyDetail, /createSignedUrl\(storagePath,3600\)/);
+});
