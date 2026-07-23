@@ -8,11 +8,13 @@ import { initializeSupabaseBrowserClient } from "../lib/supabase";
 
 type ChecklistListItem = {
   id: string;
+  assignment_id?: string;
   name: string;
   category: string | null;
   status: "draft" | "active" | "archived";
   organization_id: string;
   created_by: string | null;
+  due_at?: string | null;
 };
 
 type IconName = "home" | "check" | "task" | "team" | "model" | "chart" | "gear" | "search" | "bell" | "plus" | "clock" | "arrow" | "close" | "calendar" | "filter" | "dots";
@@ -61,6 +63,7 @@ export default function Home() {
   const [checklists,setChecklists] = useState<ChecklistListItem[]>([]);
   const [organizationId,setOrganizationId] = useState("");
   const [userId,setUserId] = useState("");
+  const [viewerRole,setViewerRole] = useState("");
   const [checklistsLoading,setChecklistsLoading] = useState(true);
   const [checklistsError,setChecklistsError] = useState("");
   const filtered = useMemo(()=>tasks.filter((t)=> !query || (t.title+t.sub+t.owner).toLowerCase().includes(query.toLowerCase())).filter((t,i)=> taskFilter!=="Minhas" || i===1 || i===3).filter((t)=>taskFilter!=="Atrasadas" || t.tone==="red"),[query,taskFilter]);
@@ -82,7 +85,7 @@ export default function Home() {
     setUserId(user.id);
     const { data: membership, error: membershipError } = await supabase
       .from("organization_members")
-      .select("organization_id")
+      .select("organization_id,role")
       .eq("user_id", user.id)
       .eq("active", true)
       .limit(1)
@@ -93,15 +96,41 @@ export default function Home() {
       return;
     }
     setOrganizationId(membership.organization_id);
-    const { data, error } = await supabase
-      .from("checklists")
-      .select("id,name,category,status,organization_id,created_by")
-      .eq("organization_id", membership.organization_id)
-      .neq("status", "archived")
-      .eq("is_template", false)
-      .order("created_at", { ascending: false });
-    if (error) setChecklistsError(error.message);
-    else setChecklists((data || []) as ChecklistListItem[]);
+    setViewerRole(membership.role);
+    if (membership.role === "collaborator") {
+      const { data: assignmentData, error: assignmentError } = await supabase
+        .from("checklist_assignments")
+        .select("id,checklist_id,due_at")
+        .eq("organization_id", membership.organization_id)
+        .eq("assigned_to", user.id)
+        .eq("active", true)
+        .order("created_at", { ascending: false });
+      if (assignmentError) setChecklistsError(assignmentError.message);
+      else {
+        const checklistIds = (assignmentData || []).map(value=>value.checklist_id);
+        const { data: checklistData, error: checklistError } = checklistIds.length
+          ? await supabase.from("checklists").select("id,name,category,status,organization_id,created_by").in("id", checklistIds).neq("status", "archived")
+          : { data: [], error: null };
+        if (checklistError) setChecklistsError(checklistError.message);
+        else {
+          const byId = new Map((checklistData || []).map(value=>[value.id,value]));
+          setChecklists((assignmentData || []).flatMap(assignment => {
+            const record = byId.get(assignment.checklist_id);
+            return record ? [{...record,assignment_id:assignment.id,due_at:assignment.due_at} as ChecklistListItem] : [];
+          }));
+        }
+      }
+    } else {
+      const { data, error } = await supabase
+        .from("checklists")
+        .select("id,name,category,status,organization_id,created_by")
+        .eq("organization_id", membership.organization_id)
+        .neq("status", "archived")
+        .eq("is_template", false)
+        .order("created_at", { ascending: false });
+      if (error) setChecklistsError(error.message);
+      else setChecklists((data || []) as ChecklistListItem[]);
+    }
     setChecklistsLoading(false);
   };
   useEffect(()=>{
@@ -147,10 +176,10 @@ export default function Home() {
     </aside>
     <main className="main">
       <SupabaseConnectionStatus />
-      <header><div><p className="eyebrow">OPERAÇÃO DE HOJE · BAR & BUFFET CENTRO</p><h1>{section==="Visão geral"?"Bom dia, Wesley":section}</h1><p className="subtitle">{section==="Visão geral"?"Acompanhe a abertura, o preparo dos eventos e o fechamento da operação.":"Rotinas simples, responsáveis definidos e tudo registrado."}</p></div><div className="header-actions"><label className="search"><Icon name="search" size={18}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar checklist, evento ou colaborador..."/></label><button className="iconbtn" aria-label="Notificações" onClick={()=>notify("Você tem 3 pendências operacionais")}><Icon name="bell"/><i>3</i></button><LogoutButton/><button className="primary" onClick={()=>setModal(true)}><Icon name="plus" size={18}/>Novo checklist</button></div></header>
+      <header><div><p className="eyebrow">OPERAÇÃO DE HOJE · BAR & BUFFET CENTRO</p><h1>{section==="Visão geral"?"Bom dia, Wesley":section}</h1><p className="subtitle">{section==="Visão geral"?"Acompanhe a abertura, o preparo dos eventos e o fechamento da operação.":"Rotinas simples, responsáveis definidos e tudo registrado."}</p></div><div className="header-actions"><label className="search"><Icon name="search" size={18}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar checklist, evento ou colaborador..."/></label><button className="iconbtn" aria-label="Notificações" onClick={()=>notify("Você tem 3 pendências operacionais")}><Icon name="bell"/><i>3</i></button><LogoutButton/>{viewerRole!=="collaborator"&&<button className="primary" onClick={()=>setModal(true)}><Icon name="plus" size={18}/>Novo checklist</button>}</div></header>
       {section==="Visão geral" && <Dashboard filtered={filtered} done={done} setDone={setDone} taskFilter={taskFilter} setTaskFilter={setTaskFilter} setSection={setSection} notify={notify}/>} 
       {section==="Modelos" && <Models onUse={(n)=>{setModal(true);notify(`Modelo “${n}” selecionado`)}}/>}
-      {section!=="Visão geral"&&section!=="Modelos"&&<Generic section={section} setModal={setModal} checklists={checklists} loading={checklistsLoading} error={checklistsError}/>}
+      {section!=="Visão geral"&&section!=="Modelos"&&<Generic section={section} setModal={setModal} checklists={checklists} loading={checklistsLoading} error={checklistsError} viewerRole={viewerRole}/>}
     </main>
     {modal&&<CreateModal close={()=>setModal(false)} create={createChecklist}/>}
     {toast&&<div className="toast"><span>✓</span>{toast}</div>}
@@ -169,6 +198,6 @@ function Dashboard({filtered,done,setDone,taskFilter,setTaskFilter,setSection,no
 
 function Models({onUse}:{onUse:(n:string)=>void}){return <section><div className="section-toolbar"><div><h2>Modelos para alimentação e eventos</h2><p>Rotinas prontas para adaptar à realidade da sua operação.</p></div><div><button className="secondary"><Icon name="filter" size={17}/>Todas as operações</button><button className="primary"><Icon name="plus" size={17}/>Criar modelo</button></div></div><div className="template-grid">{templates.map(t=><article className="template-card" key={t.title}><div className="template-icon" style={{background:t.color}}>{t.emoji}</div><span className="segment">{t.segment}</span><h3>{t.title}</h3><p>{t.items} itens · editável · pronto para atribuir</p><div><button className="secondary" onClick={()=>onUse(t.title)}>Visualizar</button><button className="primary" onClick={()=>onUse(t.title)}>Usar modelo</button></div></article>)}</div></section>}
 
-function Generic({section,setModal,checklists,loading,error}:{section:string;setModal:(v:boolean)=>void;checklists:ChecklistListItem[];loading:boolean;error:string}){const content:Record<string,[string,string,string][]>={"Planos de ação":[["Substituir lote de limão","Rafael · vence hoje","Crítico"],["Regular temperatura do freezer 2","Carla · 11:30","Em andamento"],["Repor álcool 70% no balcão","Lucas · 16:00","Aberto"]],Histórico:[["Fechamento do restaurante","Ontem · Juliana","100%"],["Evento Corporativo Alfa","Ontem · Equipe Eventos","96%"],["Abertura do bar","Hoje · Rafael","78%"]],"Equipe e unidades":[["Bar & Buffet Centro","8 colaboradores","Ativa"],["Cozinha principal","5 colaboradores","Ativa"],["Equipe Bar Premium","6 colaboradores","Em evento"]],Relatórios:[["Resumo operacional diário","Hoje","92%"],["Não conformidades abertas","3 registros","Atenção"],["Execuções por unidade","Últimos 7 dias","34"]],Configurações:[["Dados da empresa","Bar & Buffet Centro","Ativo"],["Perfis e permissões","Gestor e colaborador","Gerenciar"],["Categorias da operação","Bar, cozinha e eventos","6"]]};return <section><div className="section-toolbar"><div><h2>{section}</h2><p>{section==="Operação"?"Checklists reais da sua organização, prontos para editar e atribuir.":"Informações essenciais para manter a rotina sob controle."}</p></div><button className="primary" onClick={()=>setModal(true)}><Icon name="plus" size={17}/>{section==="Operação"?"Novo checklist":"Adicionar"}</button></div><article className="data-panel"><div className="data-head"><span>Nome</span><span>Categoria</span><span>Status</span><span></span></div>{section==="Operação" ? <>{loading&&<p className="data-state">Carregando checklists...</p>}{error&&<p className="data-state error">{error}</p>}{!loading&&!error&&checklists.length===0&&<p className="data-state">Nenhum checklist criado nesta organização.</p>}{checklists.map((checklist)=><button className="data-row" key={checklist.id} onClick={()=>{window.location.href=`/checklists/${checklist.id}`}}><span><i className="file-icon"><Icon name="check" size={19}/></i><strong>{checklist.name}</strong></span><span>{checklist.category || "Sem categoria"}</span><span className="status">{checklist.status==="draft"?"Rascunho":"Ativo"}</span><Icon name="arrow"/></button>)}</> : (content[section]||[]).map((r)=><button className="data-row" key={r[0]}><span><i className="file-icon"><Icon name={section==="Equipe e unidades"?"team":section==="Relatórios"?"chart":section==="Histórico"?"calendar":"check"} size={19}/></i><strong>{r[0]}</strong></span><span>{r[1]}</span><span className={r[2]==="Crítico"||r[2]==="Atenção"?"status danger":"status"}>{r[2]}</span><Icon name="dots"/></button>)}</article></section>}
+function Generic({section,setModal,checklists,loading,error,viewerRole}:{section:string;setModal:(v:boolean)=>void;checklists:ChecklistListItem[];loading:boolean;error:string;viewerRole:string}){const content:Record<string,[string,string,string][]>={"Planos de ação":[["Substituir lote de limão","Rafael · vence hoje","Crítico"],["Regular temperatura do freezer 2","Carla · 11:30","Em andamento"],["Repor álcool 70% no balcão","Lucas · 16:00","Aberto"]],Histórico:[["Fechamento do restaurante","Ontem · Juliana","100%"],["Evento Corporativo Alfa","Ontem · Equipe Eventos","96%"],["Abertura do bar","Hoje · Rafael","78%"]],"Equipe e unidades":[["Bar & Buffet Centro","8 colaboradores","Ativa"],["Cozinha principal","5 colaboradores","Ativa"],["Equipe Bar Premium","6 colaboradores","Em evento"]],Relatórios:[["Resumo operacional diário","Hoje","92%"],["Não conformidades abertas","3 registros","Atenção"],["Execuções por unidade","Últimos 7 dias","34"]],Configurações:[["Dados da empresa","Bar & Buffet Centro","Ativo"],["Perfis e permissões","Gestor e colaborador","Gerenciar"],["Categorias da operação","Bar, cozinha e eventos","6"]]};return <section><div className="section-toolbar"><div><h2>{section}</h2><p>{section==="Operação"?(viewerRole==="collaborator"?"Checklists atribuídos a você, prontos para iniciar ou continuar.":"Checklists reais da sua organização, prontos para editar e atribuir."):"Informações essenciais para manter a rotina sob controle."}</p></div>{viewerRole!=="collaborator"&&<button className="primary" onClick={()=>setModal(true)}><Icon name="plus" size={17}/>{section==="Operação"?"Novo checklist":"Adicionar"}</button>}</div><article className="data-panel"><div className="data-head"><span>Nome</span><span>Categoria</span><span>Status</span><span></span></div>{section==="Operação" ? <>{loading&&<p className="data-state">Carregando checklists...</p>}{error&&<p className="data-state error">{error}</p>}{!loading&&!error&&checklists.length===0&&<p className="data-state">{viewerRole==="collaborator"?"Nenhum checklist atribuído a você.":"Nenhum checklist criado nesta organização."}</p>}{checklists.map((checklist)=><button className="data-row" key={checklist.assignment_id||checklist.id} onClick={()=>{window.location.href=viewerRole==="collaborator"&&checklist.assignment_id?`/executions/${checklist.assignment_id}`:`/checklists/${checklist.id}`}}><span><i className="file-icon"><Icon name="check" size={19}/></i><strong>{checklist.name}</strong></span><span>{checklist.category || "Sem categoria"}</span><span className="status">{viewerRole==="collaborator"?"Iniciar":checklist.status==="draft"?"Rascunho":"Ativo"}</span><Icon name="arrow"/></button>)}</> : (content[section]||[]).map((r)=><button className="data-row" key={r[0]}><span><i className="file-icon"><Icon name={section==="Equipe e unidades"?"team":section==="Relatórios"?"chart":section==="Histórico"?"calendar":"check"} size={19}/></i><strong>{r[0]}</strong></span><span>{r[1]}</span><span className={r[2]==="Crítico"||r[2]==="Atenção"?"status danger":"status"}>{r[2]}</span><Icon name="dots"/></button>)}</article></section>}
 
 function CreateModal({close,create}:{close:()=>void,create:(n:string,category:string)=>Promise<void>}){const [name,setName]=useState("");const [segment,setSegment]=useState("Bar");const [busy,setBusy]=useState(false);return <div className="overlay" onMouseDown={e=>e.target===e.currentTarget&&close()}><div className="modal"><button className="modal-close" onClick={close} aria-label="Fechar"><Icon name="close"/></button><span className="modal-icon"><Icon name="check"/></span><h2>Novo checklist</h2><p>Crie uma rotina e já deixe pronta para editar e atribuir à equipe.</p><label>Nome do checklist<input autoFocus value={name} onChange={e=>setName(e.target.value)} placeholder="Ex.: Abertura da estação de bar"/></label><label>Área da operação<select value={segment} onChange={e=>setSegment(e.target.value)}><option>Bar</option><option>Cozinha</option><option>Buffet</option><option>Evento</option><option>Estoque</option><option>Higienização</option></select></label><div className="modal-actions"><button className="secondary" onClick={close}>Cancelar</button><button className="primary" disabled={!name.trim()||busy} onClick={async()=>{setBusy(true);await create(name,segment);setBusy(false)}}>{busy?"Salvando...":"Criar checklist"}</button></div></div></div>}
