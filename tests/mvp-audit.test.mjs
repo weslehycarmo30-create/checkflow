@@ -4,6 +4,7 @@ import test from "node:test";
 
 const home = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 const execution = await readFile(new URL("../app/executions/[assignmentId]/checklist-execution.tsx", import.meta.url), "utf8");
+const historyDetail = await readFile(new URL("../app/history/[executionId]/execution-history-detail.tsx", import.meta.url), "utf8");
 
 test("dashboard no longer presents the former fictional operation as real", () => {
   for (const fictional of ["Casamento Silva", "Rafael S.", "Carla M.", "92%"]) {
@@ -27,4 +28,14 @@ test("photo evidence uses the private organization path and persists metadata", 
   assert.match(execution, /file\.size > 10 \* 1024 \* 1024/);
   assert.match(execution, /image\/jpeg/);
   assert.match(execution, /createSignedUrl/);
+});
+
+test("manager history opens the real completed execution and its evidence", () => {
+  assert.match(home, /\/history\/\$\{record\.id\}/);
+  assert.match(historyDetail, /\.from\("checklist_executions"\)/);
+  assert.match(historyDetail, /\.from\("execution_answers"\)/);
+  assert.match(historyDetail, /\.from\("non_conformities"\)/);
+  assert.match(historyDetail, /\.from\("attachments"\)/);
+  assert.match(historyDetail, /createSignedUrl/);
+  assert.doesNotMatch(home, /Planos de ação"&&<b>3<\/b>/);
 });
