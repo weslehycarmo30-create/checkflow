@@ -44,6 +44,7 @@ export default function ChecklistDetail({ checklistId }: { checklistId: string }
   const [category,setCategory] = useState("");
   const [sectionTitle,setSectionTitle] = useState("");
   const [itemPrompt,setItemPrompt] = useState<Record<string,string>>({});
+  const [itemType,setItemType] = useState<Record<string,string>>({});
   const [assignedTo,setAssignedTo] = useState("");
   const [unitId,setUnitId] = useState("");
   const [dueAt,setDueAt] = useState("");
@@ -165,7 +166,7 @@ export default function ChecklistDetail({ checklistId }: { checklistId: string }
       if (!supabase) { setError("Supabase não configurado."); return; }
       const { data, error: insertError } = await supabase.from("checklist_items").insert({
         organization_id: checklist.organization_id, section_id: sectionId, prompt,
-        answer_type: "checkbox", required: true, position: section.checklist_items.length, created_by: userId,
+        answer_type: itemType[sectionId] || "checkbox", required: true, position: section.checklist_items.length, created_by: userId,
       }).select("id").single();
       if (insertError || !data) { setError(insertError?.message || "O item não foi persistido."); return; }
       setItemPrompt(current=>({...current,[sectionId]:""}));
@@ -234,7 +235,7 @@ export default function ChecklistDetail({ checklistId }: { checklistId: string }
         <article className="detail-card">
           <div className="detail-heading"><div><h2>Seções e itens</h2><p>Conteúdo atual deste checklist.</p></div></div>
           {sections.length===0&&<p className="empty-state">Nenhuma seção cadastrada.</p>}
-          {sections.map(section=><div className="checklist-section" key={section.id}><h3>{section.title}</h3>{section.checklist_items.length===0&&<p className="empty-state">Nenhum item nesta seção.</p>}{section.checklist_items.map(item=><div className="checklist-item" key={item.id}><span className="item-check item-unanswered" aria-label="Item ainda não executado"></span><span><strong>{item.prompt}</strong><small>{item.required?"Obrigatório":"Opcional"} · {item.answer_type}</small></span></div>)}{canManage&&<div className="inline-create"><input value={itemPrompt[section.id]||""} disabled={busy} onChange={event=>setItemPrompt(current=>({...current,[section.id]:event.target.value}))} placeholder="Novo item obrigatório"/><button className="secondary" disabled={busy||!itemPrompt[section.id]?.trim()} onClick={()=>addItem(section.id)}>{busy?"Salvando...":"Adicionar item"}</button></div>}</div>)}
+          {sections.map(section=><div className="checklist-section" key={section.id}><h3>{section.title}</h3>{section.checklist_items.length===0&&<p className="empty-state">Nenhum item nesta seção.</p>}{section.checklist_items.map(item=><div className="checklist-item" key={item.id}><span className="item-check item-unanswered" aria-label="Item ainda não executado"></span><span><strong>{item.prompt}</strong><small>{item.required?"Obrigatório":"Opcional"} · {item.answer_type}</small></span></div>)}{canManage&&<div className="inline-create item-create"><input value={itemPrompt[section.id]||""} disabled={busy} onChange={event=>setItemPrompt(current=>({...current,[section.id]:event.target.value}))} placeholder="Novo item obrigatório"/><select value={itemType[section.id]||"checkbox"} disabled={busy} onChange={event=>setItemType(current=>({...current,[section.id]:event.target.value}))} aria-label="Tipo de resposta"><option value="checkbox">Checkbox</option><option value="yes_no">Sim ou não</option><option value="short_text">Texto curto</option><option value="long_text">Texto longo</option><option value="number">Número</option><option value="date">Data</option><option value="time">Horário</option><option value="photo">Fotografia</option><option value="rating">Avaliação 0 a 10</option></select><button className="secondary" disabled={busy||!itemPrompt[section.id]?.trim()} onClick={()=>addItem(section.id)}>{busy?"Salvando...":"Adicionar item"}</button></div>}</div>)}
           {canManage&&<div className="inline-create section-create"><input value={sectionTitle} disabled={busy} onChange={event=>setSectionTitle(event.target.value)} placeholder="Nome da nova seção"/><button className="secondary" disabled={busy||!sectionTitle.trim()} onClick={addSection}>{busy?"Salvando...":"Adicionar seção"}</button></div>}
         </article>
       </section>

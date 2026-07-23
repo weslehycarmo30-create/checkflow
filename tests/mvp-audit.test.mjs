@@ -19,3 +19,12 @@ test("execution waits for persistence and blocks duplicate critical actions", ()
   assert.match(execution, /A resposta não foi persistida/);
   assert.match(execution, /\.select\("id"\)\.maybeSingle\(\)/);
 });
+
+test("photo evidence uses the private organization path and persists metadata", () => {
+  assert.match(execution, /checkflow-evidence/);
+  assert.match(execution, /\$\{assignment\.organization_id\}\/\$\{execution\.id\}\/\$\{itemId\}/);
+  assert.match(execution, /\.from\("attachments"\)\.insert/);
+  assert.match(execution, /file\.size > 10 \* 1024 \* 1024/);
+  assert.match(execution, /image\/jpeg/);
+  assert.match(execution, /createSignedUrl/);
+});

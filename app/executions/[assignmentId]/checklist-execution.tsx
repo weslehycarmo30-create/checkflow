@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @next/next/no-img-element -- signed private evidence URLs must not pass through the public image optimizer */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PrivateRouteGuard } from "../../private-route-guard";
@@ -30,6 +31,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
   const [error,setError] = useState("");
   const [notice,setNotice] = useState("");
   const [savingItems,setSavingItems] = useState<string[]>([]);
+  const [photoUrls,setPhotoUrls] = useState<Record<string,string>>({});
   const actionLock = useRef(false);
   const items = useMemo(()=>sections.flatMap(section=>section.checklist_items),[sections]);
   const answeredCount = items.filter(item => {
@@ -85,7 +87,15 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
         .select("item_id,value")
         .eq("execution_id", executionData.id);
       if (answerError) setError(answerError.message);
-      else setAnswers(Object.fromEntries((answerData || []).map(answer=>[answer.item_id,answer.value as AnswerValue])));
+      else {
+        setAnswers(Object.fromEntries((answerData || []).map(answer=>[answer.item_id,answer.value as AnswerValue])));
+        const photoAnswers = (answerData || []).filter(answer=>typeof answer.value==="string" && answer.value);
+        const signedEntries = await Promise.all(photoAnswers.map(async answer => {
+          const { data: signed } = await supabase.storage.from("checkflow-evidence").createSignedUrl(answer.value as string, 3600);
+          return signed?.signedUrl ? [answer.item_id,signed.signedUrl] as const : null;
+        }));
+        setPhotoUrls(Object.fromEntries(signedEntries.filter((entry): entry is readonly [string,string]=>Boolean(entry))));
+      }
     }
     setLoading(false);
   };
@@ -173,6 +183,78 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     setSavingItems(current=>current.filter(id=>id!==itemId));
   };
 
+  const uploadPhoto = async (itemId:string,file:File | null) => {
+    if (!file || !execution || !assignment || execution.status!=="in_progress" || savingItems.includes(itemId)) return;
+    const allowedTypes:Record<string,string> = {
+      "image/jpeg":"jpg",
+      "image/png":"png",
+      "image/webp":"webp",
+    };
+    const extension = allowedTypes[file.type];
+    if (!extension) {
+      setError("Formato inválido. Envie uma foto JPG, PNG ou WebP.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError("A fotografia deve ter no máximo 10 MB.");
+      return;
+    }
+    setSavingItems(current=>[...current,itemId]);
+    setError("");
+    setNotice("");
+    const supabase = await initializeSupabaseBrowserClient();
+    if (!supabase) {
+      setSavingItems(current=>current.filter(id=>id!==itemId));
+      setError("Supabase não configurado.");
+      return;
+    }
+    const storagePath = `${assignment.organization_id}/${execution.id}/${itemId}/${crypto.randomUUID()}.${extension}`;
+    const { error: uploadError } = await supabase.storage.from("checkflow-evidence").upload(storagePath,file,{
+      contentType:file.type,
+      upsert:false,
+      cacheControl:"3600",
+    });
+    if (uploadError) {
+      setSavingItems(current=>current.filter(id=>id!==itemId));
+      setError(uploadError.message || "Não foi possível enviar a fotografia.");
+      return;
+    }
+    const { data: answer, error: answerError } = await supabase.from("execution_answers").upsert({
+      organization_id:assignment.organization_id,
+      execution_id:execution.id,
+      item_id:itemId,
+      value:storagePath,
+      answered_at:new Date().toISOString(),
+      created_by:userId,
+    },{onConflict:"execution_id,item_id"}).select("id").single();
+    if (answerError || !answer) {
+      await supabase.storage.from("checkflow-evidence").remove([storagePath]);
+      setSavingItems(current=>current.filter(id=>id!==itemId));
+      setError(answerError?.message || "A fotografia foi enviada, mas a resposta não foi vinculada.");
+      return;
+    }
+    const { error: attachmentError } = await supabase.from("attachments").insert({
+      organization_id:assignment.organization_id,
+      execution_id:execution.id,
+      answer_id:answer.id,
+      storage_path:storagePath,
+      file_name:file.name,
+      mime_type:file.type,
+      size_bytes:file.size,
+      created_by:userId,
+    });
+    if (attachmentError) {
+      setSavingItems(current=>current.filter(id=>id!==itemId));
+      setError(`A fotografia foi salva, mas o registro da evidência falhou: ${attachmentError.message}`);
+      return;
+    }
+    const { data:signed } = await supabase.storage.from("checkflow-evidence").createSignedUrl(storagePath,3600);
+    setAnswers(current=>({...current,[itemId]:storagePath}));
+    if (signed?.signedUrl) setPhotoUrls(current=>({...current,[itemId]:signed.signedUrl}));
+    setSavingItems(current=>current.filter(id=>id!==itemId));
+    setNotice("Fotografia salva e vinculada à execução.");
+  };
+
   const finishExecution = async () => {
     if (!execution || execution.status==="completed" || actionLock.current) return;
     if (savingItems.length > 0) {
@@ -220,7 +302,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
       const options = Array.isArray(item.options) ? item.options.filter(option=>typeof option==="string") as string[] : [];
       return <select value={String(value??"")} disabled={readOnly} onChange={event=>saveAnswer(item.id,event.target.value)}><option value="">Selecione</option>{options.map(option=><option key={option} value={option}>{option}</option>)}</select>;
     }
-    if (item.answer_type==="photo") return <div className="unsupported-answer">Envio de fotografia ainda não homologado neste fluxo.</div>;
+    if (item.answer_type==="photo") return <div className="photo-answer">{photoUrls[item.id]&&<img src={photoUrls[item.id]} alt={`Evidência de ${item.prompt}`}/>}<label className={`photo-upload ${readOnly?"disabled":""}`}><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={readOnly} onChange={event=>uploadPhoto(item.id,event.target.files?.[0]||null)}/><span>{savingItems.includes(item.id)?"Enviando fotografia...":photoUrls[item.id]?"Fotografia enviada":"Tirar ou escolher fotografia"}</span></label><small>JPG, PNG ou WebP · máximo de 10 MB</small></div>;
     if (item.answer_type==="long_text") return <textarea defaultValue={String(value??"")} disabled={readOnly} placeholder="Digite sua resposta" onBlur={event=>event.target.value!==String(value??"")&&saveAnswer(item.id,event.target.value)}/>;
     const inputType = item.answer_type==="number"?"number":item.answer_type==="date"?"date":item.answer_type==="time"?"time":"text";
     return <input type={inputType} defaultValue={String(value??"")} disabled={readOnly} placeholder="Digite sua resposta" onBlur={event=>event.target.value!==String(value??"")&&saveAnswer(item.id,item.answer_type==="number"&&event.target.value?Number(event.target.value):event.target.value)}/>;
