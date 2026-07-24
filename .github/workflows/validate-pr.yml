@@ -26,5 +26,5 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npx tsc --noEmit
-      - run: node --test tests/*.test.mjs
       - run: npm run build
+      - run: node --test tests/*.test.mjs
