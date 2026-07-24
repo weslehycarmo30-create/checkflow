@@ -6,21 +6,20 @@ type Theme = "light" | "dark";
 
 const STORAGE_KEY = "checkflow:theme";
 
-function currentTheme(): Theme {
-  if (typeof document === "undefined") return "light";
-  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
-}
-
 function applyTheme(theme: Theme) {
   document.documentElement.dataset.theme = theme;
   document.documentElement.style.colorScheme = theme;
 }
 
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>(currentTheme);
+  const [mounted, setMounted] = useState(false);
+  const [theme, setTheme] = useState<Theme>("light");
 
   useEffect(() => {
-    const frame = window.requestAnimationFrame(() => setTheme(currentTheme()));
+    const frame = window.requestAnimationFrame(() => {
+      setTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
+      setMounted(true);
+    });
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const followSystemPreference = (event: MediaQueryListEvent) => {
       if (window.localStorage.getItem(STORAGE_KEY)) return;
@@ -38,21 +37,23 @@ export function ThemeToggle() {
 
   const nextTheme = theme === "dark" ? "light" : "dark";
   const nextLabel = nextTheme === "dark" ? "Tema escuro" : "Tema claro";
+  const label = mounted ? `Ativar ${nextLabel.toLowerCase()}` : "Alternar tema";
 
   return (
     <button
       type="button"
       className="theme-toggle"
-      aria-label={`Ativar ${nextLabel.toLowerCase()}`}
-      title={`Ativar ${nextLabel.toLowerCase()}`}
+      aria-label={label}
+      title={label}
       onClick={() => {
+        if (!mounted) return;
         window.localStorage.setItem(STORAGE_KEY, nextTheme);
         applyTheme(nextTheme);
         setTheme(nextTheme);
       }}
     >
-      <span aria-hidden="true">{nextTheme === "dark" ? "☾" : "☀"}</span>
-      <span>{nextLabel}</span>
+      <span aria-hidden="true">{mounted ? (nextTheme === "dark" ? "☾" : "☀") : "◐"}</span>
+      <span>{mounted ? nextLabel : "Alternar tema"}</span>
     </button>
   );
 }

@@ -36,6 +36,21 @@ test("stored preference wins after refresh", () => {
   assert.match(toggle, /localStorage\.setItem\(STORAGE_KEY, nextTheme\)/);
 });
 
+test("ThemeToggle has a deterministic initial render without browser reads", () => {
+  const componentBeforeEffect = toggle.slice(
+    toggle.indexOf("export function ThemeToggle"),
+    toggle.indexOf("useEffect"),
+  );
+
+  assert.match(toggle, /const \[mounted, setMounted\] = useState\(false\)/);
+  assert.match(toggle, /const \[theme, setTheme\] = useState<Theme>\("light"\)/);
+  assert.match(toggle, /aria-label=\{label\}/);
+  assert.match(toggle, /title=\{label\}/);
+  assert.match(toggle, /mounted \? nextLabel : "Alternar tema"/);
+  assert.doesNotMatch(componentBeforeEffect, /\b(window|document|localStorage|matchMedia)\b/);
+  assert.doesNotMatch(toggle, /useState<Theme>\([^"']|currentTheme/);
+});
+
 test("theme initializes in the document head before page content", () => {
   assert.ok(layout.indexOf("themeInitializationScript") < layout.indexOf("<body"));
   assert.ok(layout.indexOf("<ThemeToggle />") < layout.indexOf("{children}"));
