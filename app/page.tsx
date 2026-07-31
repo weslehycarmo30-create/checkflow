@@ -5,6 +5,7 @@ import { SupabaseConnectionStatus } from "./supabase-connection-status";
 import { PrivateRouteGuard } from "./private-route-guard";
 import { LogoutButton } from "./logout-button";
 import { initializeSupabaseBrowserClient } from "../lib/supabase";
+import { TeamManagement } from "./team-management";
 
 type ChecklistListItem = {
   id: string;
@@ -258,6 +259,7 @@ export default function Home() {
       <header><div><p className="eyebrow">OPERAÇÃO · {organizationName.toUpperCase()}</p><h1>{section==="Visão geral"?`Olá, ${profileName.split(" ")[0]}`:section}</h1><p className="subtitle">{section==="Visão geral"?"Acompanhe os dados operacionais registrados no sistema.":"Rotinas simples, responsáveis definidos e tudo registrado."}</p></div><div className="header-actions"><label className="search"><Icon name="search" size={18}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar checklist..."/></label><LogoutButton/>{viewerRole&&viewerRole!=="collaborator"&&<button className="primary" onClick={()=>setModal(true)}><Icon name="plus" size={18}/>Novo checklist</button>}</div></header>
       {section==="Visão geral" && <Dashboard checklists={filteredChecklists} executions={dashboardExecutions} history={history} nonConformities={openNonConformities} loading={checklistsLoading} error={checklistsError} setSection={setSection}/>} 
       {section==="Modelos" && <Models onUse={(n)=>{setModal(true);notify(`Modelo “${n}” selecionado`)}}/>}
+      {section==="Equipe e unidades" && <TeamManagement />}
       {section!=="Visão geral"&&section!=="Modelos"&&<Generic section={section} setModal={setModal} checklists={filteredChecklists} history={history} loading={checklistsLoading} error={checklistsError} viewerRole={viewerRole}/>}
     </main>
     {modal&&<CreateModal close={()=>setModal(false)} create={createChecklist}/>}
