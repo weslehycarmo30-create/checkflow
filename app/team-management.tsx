@@ -37,7 +37,10 @@ export function TeamManagement() {
     setLoading(false);
   };
 
-  useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const timeout = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(timeout);
+  }, []);
 
   const invite = async (event: FormEvent) => {
     event.preventDefault();
