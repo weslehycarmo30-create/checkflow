@@ -25,6 +25,10 @@ type HistoryItem = {
   completed_at: string;
   conformity_percentage: number | null;
 };
+type HistorySnapshotPreview = {
+  checklist?: {name?: string};
+  executor?: {full_name?: string|null};
+};
 type DashboardExecution = {
   id: string;
   status: "in_progress" | "paused" | "completed";
@@ -161,7 +165,7 @@ export default function Home() {
     }
     const historyQuery = supabase
       .from("checklist_executions")
-      .select("id,checklist_id,executor_id,completed_at,conformity_percentage")
+      .select("id,completed_at,conformity_percentage,execution_snapshot")
       .eq("organization_id", membership.organization_id)
       .eq("status", "completed")
       .order("completed_at", { ascending: false })
@@ -170,18 +174,10 @@ export default function Home() {
     const { data: historyData, error: historyError } = await historyQuery;
     if (historyError) setChecklistsError(historyError.message);
     else {
-      const historyChecklistIds = [...new Set((historyData || []).map(value=>value.checklist_id))];
-      const executorIds = [...new Set((historyData || []).map(value=>value.executor_id))];
-      const [{ data: historyChecklists }, { data: executorProfiles }] = await Promise.all([
-        historyChecklistIds.length ? supabase.from("checklists").select("id,name").in("id", historyChecklistIds) : Promise.resolve({data:[]}),
-        executorIds.length ? supabase.from("profiles").select("id,full_name").in("id", executorIds) : Promise.resolve({data:[]}),
-      ]);
-      const checklistNames = new Map((historyChecklists || []).map(value=>[value.id,value.name]));
-      const executorNames = new Map((executorProfiles || []).map(value=>[value.id,value.full_name || "Colaborador"]));
       setHistory((historyData || []).filter(value=>value.completed_at).map(value=>({
         id:value.id,
-        checklist_name:checklistNames.get(value.checklist_id) || "Checklist",
-        executor_name:executorNames.get(value.executor_id) || "Colaborador",
+        checklist_name:(value.execution_snapshot as HistorySnapshotPreview|null)?.checklist?.name || "Registro legado sem snapshot",
+        executor_name:(value.execution_snapshot as HistorySnapshotPreview|null)?.executor?.full_name || "Executor registrado",
         completed_at:value.completed_at as string,
         conformity_percentage:value.conformity_percentage===null?null:Number(value.conformity_percentage),
       })));
