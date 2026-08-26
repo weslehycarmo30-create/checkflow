@@ -26,7 +26,7 @@ Aplicar somente na ordem abaixo, em ambiente local ou de homologação explicita
 
 A migration P0 é forward-only. Ela troca as policies amplas do bucket privado `checkflow-evidence` por regras que exigem a relação entre o caminho e uma execução/item do executor, ou um plano de ação do responsável. Ela também remove a deleção de evidências para usuários da aplicação, preservando o registro do piloto.
 
-Estado testado das migrations nesta estação: revisão estática de todas as quatro; execução em banco local pendente porque Docker não está disponível. Não há evidência, nesta cópia do repositório, de quais migrations foram aplicadas em qualquer ambiente remoto.
+Estado testado das migrations nesta estação: as quatro migrations foram aplicadas, nessa ordem e sem erro, em uma stack Supabase temporária isolada. Docker Desktop 29.6.2 e Supabase CLI 2.95.4 estavam ativos; API e banco usados foram `127.0.0.1:55421` e `127.0.0.1:55422`. Não há evidência, nesta cópia do repositório, de quais migrations foram aplicadas em qualquer ambiente remoto.
 
 ## Modelo de acesso encontrado
 
@@ -35,13 +35,13 @@ Papéis existentes no schema: `owner`, `manager`, `collaborator`. Neste document
 | Capacidade | Estado | Evidência / limite |
 | --- | --- | --- |
 | Autenticação e perfil | IMPLEMENTADA | Supabase Auth e trigger `handle_new_user`; cadastro normal cria a organização inicial do owner. |
-| Organização e membership | IMPLEMENTADA COM RESSALVA | RLS exige membership ativa; a interface usa uma única membership ativa. |
+| Organização e membership | IMPLEMENTADA | RLS exige membership ativa; owner criou/removeu membership no teste local e manager/executor não promoveram o próprio papel. |
 | Convite/provisionamento | IMPLEMENTADA | Worker valida sessão, deriva tenant no servidor, owner convida manager/executor e manager somente executor. Exige segredo server-side configurado fora do repositório. |
 | Checklist, atribuição e execução | IMPLEMENTADA | Migrations e rotas existentes; trigger valida tenant, executor e atribuição ativa. |
 | Respostas, não conformidade e plano | IMPLEMENTADA | Fluxo e migrations existentes; validações de vínculos e atualização restrita do responsável. |
-| Foto/evidência | IMPLEMENTADA COM RESSALVA | Bucket privado, upload por caminho controlado e URL assinada no cliente. Teste real de Storage local ainda está pendente. |
+| Foto/evidência | IMPLEMENTADA | Bucket privado, upload por caminho controlado e URL assinada; API Storage local confirmou permissões e bloqueios por relação. |
 | Histórico | PARCIAL | Tela e consultas existem; este gate não auditou integridade histórica além das relações atuais. |
-| RLS e migrations | IMPLEMENTADA COM RESSALVA | Código e policies auditados; aplicação efetiva em um banco permanece não comprovada. |
+| RLS e migrations | IMPLEMENTADA | Aplicadas e exercitadas contra Postgres/Storage locais; estado de ambiente remoto permanece deliberadamente não consultado. |
 
 ## Provisionamento aprovado para o Start
 
@@ -84,7 +84,7 @@ O caminho precisa conter UUIDs existentes da organização, execução e item, o
 
 Teste automatizado novo: `tests/team-invitations.test.mjs` exerce o Worker compilado com respostas simuladas do Supabase. Cobre derivação de tenant no servidor, convite owner→manager e negativas manager→manager / executor→convite. `npm test` agora executa todos os `tests/*.test.mjs` após o build.
 
-Teste comportamental de banco preparado: `supabase/tests/checkflow_start_p0_behavior.sql`. Ele usa Tenant A/B, owner, manager, executor, membro não relacionado, usuário inativo e usuário sem membership. Cobre leitura própria, isolamento A/B, promoção indevida, upload autorizado, same-tenant não autorizado, Storage de plano de ação e relação cross-tenant.
+Teste comportamental de banco: `supabase/tests/checkflow_start_p0_behavior.sql`. A matriz executada passou contra o Postgres local e terminou em `ROLLBACK`. Ela usou Tenant A/B, owner, manager, executor, membro não relacionado, usuário inativo, usuário removido e usuário sem membership. Cobre leitura própria, isolamento A/B, criação/remoção permitida pelo owner, promoção indevida, upload autorizado, same-tenant não autorizado, Storage de plano de ação e relação cross-tenant.
 
 Antes de executá-lo, confirmar explicitamente que a stack é local:
 
@@ -95,9 +95,13 @@ docker ps --format '{{.Names}}'
 # Escolha apenas o container local supabase_db_* correspondente.
 ```
 
-Somente após essa confirmação, executar o SQL no container local e preservar a saída. O script começa com `BEGIN` e termina em `ROLLBACK`.
+Somente após essa confirmação, executar o SQL no container local e preservar a saída. O script começa com `BEGIN` e termina em `ROLLBACK`. Na execução deste gate, a confirmação foi API em `http://127.0.0.1:55421` e Postgres em `127.0.0.1:55422`.
 
-Nesta estação, Docker não estava acessível e não existe `supabase/config.toml`; por isso o teste de banco, o teste de signed URL contra Storage API e a prova de migrations aplicadas estão pendentes. Não declarar esses cenários como aprovados sem essa execução.
+Também foi executada uma matriz contra a API Storage real: upload autorizado pelo executor; criação e leitura de URL assinada por executor, manager e owner; negativas de URL assinada para membro ativo sem relação, usuário inativo e owner do Tenant B. A policy privada foi, portanto, comprovada no caminho usado pelo Storage API, não somente por consulta SQL.
+
+O repositório continua sem `supabase/config.toml`: a stack foi criada em diretório temporário fora do projeto, parada após os testes e seus dois volumes de teste removidos. Nenhum ambiente remoto foi acessado. A primeira versão do teste confundia `UPDATE 0` de RLS com sucesso; foi corrigida para verificar `ROW_COUNT`, sem mudança no produto ou no schema.
+
+Validação Windows equivalente aos scripts Bash: 19/19 testes Node aprovados, `npx tsc --noEmit`, build direto `vinext`, ESLint direto e `git diff --check` aprovados. Os wrappers `npm run build`, `npm test` e `npm run lint` continuam dependentes de Bash/WSL; tornar esses wrappers cross-platform é P1 e não foi alterado neste gate.
 
 ## Registro de release
 
@@ -106,13 +110,13 @@ Nesta estação, Docker não estava acessível e não existe `supabase/config.to
 | Base | `eee7c64f36959284a12a5b06bc433b3358809fbd` |
 | Código do RC | `0fb62c5f195b435b81899520fd1a233d2d46e87a` |
 | Schema requerido | as quatro migrations listadas acima |
-| Schema executado/testado | não executado nesta estação; teste local pendente |
-| Ambiente validado | revisão local Windows; Node/Supabase CLI presentes, Docker indisponível |
+| Schema executado/testado | quatro migrations aplicadas e matriz Postgres/Storage API aprovada localmente |
+| Ambiente validado | Windows, Docker Desktop 29.6.2, Supabase CLI 2.95.4, API `127.0.0.1:55421`, DB `127.0.0.1:55422` |
 | Ambiente remoto | não acessado |
 
 ## Pendências para o próximo gate
 
-- Subir uma stack Supabase local explicitamente em `localhost`/`127.0.0.1`, aplicar as quatro migrations e executar a matriz SQL sem modificar remoto.
 - Confirmar no ambiente de homologação autorizado quais migrations estão aplicadas e repetir a matriz por credenciais reais.
 - Validar o convite contra a resposta real da versão de Supabase usada pelo ambiente e o e-mail de convite.
+- P1: tornar os wrappers Bash de build/test/lint cross-platform sem alterar seu comportamento.
 - O Gate de integridade histórica permanece fora de escopo e não foi iniciado.

@@ -22,7 +22,8 @@ values
   ('00000000-0000-0000-0000-0000000000a3', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'executor-a@checkflow.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now()),
   ('00000000-0000-0000-0000-0000000000a4', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'other-a@checkflow.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now()),
   ('00000000-0000-0000-0000-0000000000a5', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'inactive-a@checkflow.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now()),
-  ('00000000-0000-0000-0000-0000000000a6', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'no-membership@checkflow.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now()),
+  ('00000000-0000-0000-0000-0000000000a6', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'removed-a@checkflow.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now()),
+  ('00000000-0000-0000-0000-0000000000a7', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'no-membership@checkflow.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now()),
   ('00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'owner-b@checkflow.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now())
 on conflict (id) do nothing;
 
@@ -57,6 +58,20 @@ insert into public.action_plans (id, organization_id, non_conformity_id, descrip
 values ('90000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-0000000000a1', '80000000-0000-0000-0000-0000000000a1', 'Correção de teste', '00000000-0000-0000-0000-0000000000a3', '00000000-0000-0000-0000-0000000000a1');
 
 set local role authenticated;
+
+-- Owner can provision an executor and remove that membership. The removed user
+-- is checked below separately from a user that never had an organization.
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', true);
+do $$ declare changed integer; begin
+  insert into public.organization_members (organization_id, user_id, role, active, created_by)
+  values ('10000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000a6', 'collaborator', true, '00000000-0000-0000-0000-0000000000a1');
+  get diagnostics changed = row_count;
+  if changed <> 1 then raise exception 'owner could not create membership'; end if;
+  delete from public.organization_members
+  where organization_id = '10000000-0000-0000-0000-0000000000a1' and user_id = '00000000-0000-0000-0000-0000000000a6';
+  get diagnostics changed = row_count;
+  if changed <> 1 then raise exception 'owner could not remove membership'; end if;
+end $$;
 
 -- Valid executor: own tenant visible, upload and subsequent read allowed.
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a3', true);
@@ -100,29 +115,37 @@ do $$ begin if exists (select 1 from storage.objects where bucket_id = 'checkflo
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a5', true);
 do $$ begin if exists (select 1 from public.organizations where id = '10000000-0000-0000-0000-0000000000a1') then raise exception 'inactive user read tenant A'; end if; end $$;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a6', true);
+do $$ begin if exists (select 1 from public.organizations where id = '10000000-0000-0000-0000-0000000000a1') then raise exception 'removed user read tenant A'; end if; end $$;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a7', true);
 do $$ begin if exists (select 1 from public.organizations where id = '10000000-0000-0000-0000-0000000000a1') then raise exception 'user without membership read tenant A'; end if; end $$;
 
 -- Manager has read access but cannot create or promote memberships. The Worker
 -- separately limits manager invitations to the collaborator role.
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a2', true);
-do $$ begin
+do $$ declare changed integer; begin
   if (select count(*) from storage.objects where bucket_id = 'checkflow-evidence') <> 2 then raise exception 'manager cannot read authorized evidence'; end if;
   begin
     update public.organization_members set role = 'owner'
     where organization_id = '10000000-0000-0000-0000-0000000000a1' and user_id = '00000000-0000-0000-0000-0000000000a2';
-    raise exception 'manager promotion was accepted';
+    get diagnostics changed = row_count;
+    if changed <> 0 then raise exception 'manager promotion was accepted'; end if;
   exception when insufficient_privilege then null;
+  when raise_exception then
+    if sqlerrm = 'manager promotion was accepted' then raise; end if;
   end;
 end $$;
 
 -- Executor cannot promote itself either.
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a3', true);
-do $$ begin
+do $$ declare changed integer; begin
   begin
     update public.organization_members set role = 'owner'
     where organization_id = '10000000-0000-0000-0000-0000000000a1' and user_id = '00000000-0000-0000-0000-0000000000a3';
-    raise exception 'executor promotion was accepted';
+    get diagnostics changed = row_count;
+    if changed <> 0 then raise exception 'executor promotion was accepted'; end if;
   exception when insufficient_privilege then null;
+  when raise_exception then
+    if sqlerrm = 'executor promotion was accepted' then raise; end if;
   end;
 end $$;
 
