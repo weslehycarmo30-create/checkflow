@@ -23,6 +23,9 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 Ordem atual:
 
 1. `supabase/migrations/202607220001_base_multitenant.sql`
+2. `supabase/migrations/202607230002_hardening_rls_mvp.sql`
+3. `supabase/migrations/202607230003_action_plan_minimal_rls.sql`
+4. `supabase/migrations/202608260001_checkflow_start_p0_provisioning_storage.sql`
 
 No painel Supabase:
 
@@ -30,7 +33,7 @@ No painel Supabase:
 2. Clique em **New query**.
 3. Abra o arquivo da migração no repositório, copie todo o conteúdo e cole no editor.
 4. Clique em **Run** uma única vez.
-5. Confirme que aparece **Success. No rows returned**. A migração é protegida contra duplicação e pode ser reaplicada para corrigir funções e políticas.
+5. Confirme que aparece **Success. No rows returned**. Execute cada arquivo na ordem acima. A quarta migration é forward-only e restringe o acesso ao Storage por relação com execução ou plano de ação.
 
 ## 4. Validar tabelas, funções e bucket
 
