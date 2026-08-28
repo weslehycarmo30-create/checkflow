@@ -184,3 +184,11 @@ O projeto Supabase `fzmzrtthmciaisygajba` foi confirmado novamente. Não há cre
 Não existe defeito de produto ou necessidade de programação para esses três bloqueios. A menor sequência humana está documentada no runbook: baixar Storage, obter backup Auth oficial e autenticar Wrangler apenas para consulta de deployments.
 
 Status global desta missão: **HUMAN AUTH REQUIRED**. O rollout continua bloqueado até os componentes críticos deixarem de ser RED.
+
+## Security Definer hardening — missão 014
+
+Inventário remoto encontrou 9 funções `SECURITY DEFINER` públicas, todas com `search_path=""` seguro e owner `postgres`. Antes da correção, as 9 eram executáveis por `anon` e `authenticated`. Seis são internas/trigger; três são helpers de policy necessários para `authenticated`: `is_org_member`, `has_org_role` e `can_access_checkflow_evidence`.
+
+A migration `202608280001_security_definer_execute_hardening.sql` revogou EXECUTE explicitamente por assinatura. Resultado remoto: `security_definer_anon_exec=0`, `internal_anon_exec=0`, `policy_helpers_anon_exec=0`, `policy_helpers_authenticated_exec=3`. Triggers, P0 e histórico permaneceram funcionais.
+
+Migration aplicada entre `2026-08-28T14:50:41.6780070Z` e `2026-08-28T14:50:53.1005322Z`, com histórico registrado. Contagens preservadas: `2/7/7/6/17/2/1/4`. Advisors: 140 WARN, sem `ERROR`, P0 ou P1 real; permanecem warnings de performance/configuração e os 3 helpers authenticated necessários.

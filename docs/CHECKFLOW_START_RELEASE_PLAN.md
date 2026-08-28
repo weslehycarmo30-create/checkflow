@@ -60,3 +60,9 @@ Status: **READY FOR ROLLOUT COM RESSALVAS**. Nenhum P0/P1 técnico conhecido e n
 Status: **SUCCESS COM RESSALVAS**. As cinco migrations foram aplicadas e registradas no projeto autorizado, com todas as contagens e invariantes preservadas. Nenhum deploy foi executado.
 
 Bloqueador P1: o postflight detectou 155 warnings e `EXECUTE` efetivo para `anon` em funções `SECURITY DEFINER` públicas de snapshot, proteção histórica e validação tenant. A FASE 2 está bloqueada até existir migration corretiva versionada, aplicada com autorização própria, e novo postflight sem essa exposição. Não executar correção manual, deploy ou smoke enquanto isso.
+
+## Security gate fechado — missão 014
+
+O P1 foi eliminado pela migration forward `202608280001_security_definer_execute_hardening.sql`, sem alteração de dados. As 9 SECURITY DEFINER públicas mantêm `search_path=""`; seis internas/trigger ficaram sem EXECUTE para `PUBLIC`, `anon`, `authenticated` e `service_role`; os três helpers de policy mantiveram EXECUTE somente para `authenticated`.
+
+Teste específico, P0 e histórico passaram local e remotamente em transações com rollback. Postflight confirmou `security_definer_anon_exec=0`, contagens `2/7/7/6/17/2/1/4`, RLS ativo, isolamento verde, zero órfãos, snapshot ativo e Storage privado. Advisors: 140 WARN, nenhum P0/P1/ERROR. Status: **PASS COM RESSALVAS**; banco liberado para deployment RC1 e solicitação da FASE 2. Nenhum deploy foi executado.
