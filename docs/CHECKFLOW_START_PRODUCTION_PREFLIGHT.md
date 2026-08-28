@@ -123,3 +123,15 @@ Validar também isolamento entre duas organizações de teste e ausência de ace
 6. O próximo passo pode ser somente execução controlada do release? **Não; o próximo passo é preflight de backup/rollback e aprovação humana.**
 
 Produção não foi alterada. Nenhuma migration remota, alteração de dados, deploy ou publicação foi realizada.
+
+## Atualização de recovery — missão 010
+
+O dump PostgreSQL previamente comprovado continua válido: schema e dados públicos/Storage foram restaurados em database local isolado, com checksums registrados. O stack local foi encerrado após o ensaio.
+
+O inventário Storage foi confirmado somente por leitura: 4 objetos no bucket privado `checkflow-evidence`, aproximadamente 6.426.853 bytes. As tentativas autorizadas de `supabase storage cp` remoto foram recusadas pela CLI como operação não suportada; resultado físico: **0/4 objetos baixados**. Não foi usado `service_role`, nem houve upload, delete ou alteração remota.
+
+Auth permanece sem export restaurável comprovado: há 7 usuários, 7 identities, 7 profiles e 7 memberships, todos com provider `email`. O plano seguro é obter backup oficial de Auth ou, como contingência, reconstruir usuários com password reset e validar/remapear as referências de tenant antes de liberar acesso. Nenhum plano foi executado.
+
+O baseline do deploy também permanece incompleto: `.openai/hosting.json` identifica o projeto Cloudflare Sites, mas `wrangler whoami` não autenticou e não foi possível determinar URL, deployment ID ou SHA atualmente publicado. O alvo de rollback publicado é, portanto, **incerto**.
+
+Conclusão atualizada: **BLOCKED** para rollout. Os componentes críticos `Auth`, `Storage binaries` e `Config/deployment baseline` permanecem RED. A menor ação seguinte é obter, por acesso humano autorizado, a cópia física dos 4 objetos, um mecanismo comprovado de recuperação Auth e o registro do deployment Cloudflare ativo, sem alterar produção.

@@ -119,3 +119,48 @@ Responsável pelo GO/ROLLBACK: ainda não designado nesta sessão; deve ser nome
 9. Seguro voltar ao gate de rollout? **Não ainda; exigir confirmação humana de backup completo Auth/Storage e rollback operacional.**
 
 Produção não foi alterada. Nenhuma migration remota, deploy, publicação, inserção ou alteração de dados foi realizada.
+
+## Atualização do recovery gap — missão 010
+
+### Storage físico
+
+O inventário remoto foi repetido: 4 objetos no bucket privado `checkflow-evidence`, total de aproximadamente 6.426.853 bytes. A CLI Supabase `2.116.0` recusou `storage cp` remoto como operação não suportada, tanto com `--project-ref` quanto com `--linked --project-ref`; nenhum objeto foi alterado.
+
+Resultado: **0/4 objetos baixados fisicamente**. O arquivo temporário `storage-inventory.txt` contém paths, MIME e tamanhos, com SHA-256 `17235C2CCFFAA45C9A9C04DF67F77F0ACEA99C2E9A05F51DF6910AA02F866123`. A cópia física exige Dashboard ou cliente S3/API oficial com credencial autorizada para leitura do bucket privado. Não foi usado `service_role` nem criada sessão remota.
+
+Em ambiente local, o schema/metadados Storage do dump foram restaurados e os 4 registros de objetos foram validados. Os bytes não foram restaurados; portanto a prova de recuperação binária ainda está pendente.
+
+### Auth recovery
+
+O inventário remoto confirmou 7 usuários, 7 identities, 7 profiles, 7 memberships e somente provider `email`. O dump sensível anterior foi removido; não há passwords, hashes, sessões, refresh tokens ou access tokens armazenados como artefato de backup.
+
+Segundo a documentação oficial do Supabase, um backup completo/`.backup` ou export SQL do schema `auth` pode migrar usuários e hashes de senha, mas isso deve ser tratado como material sensível e protegido. O projeto não tem backup físico listado nem PITR habilitado, e não foi produzido um export Auth nesta sessão.
+
+Plano A: obter backup oficial completo do projeto, com acesso controlado, e testar restauração em projeto/database descartável autorizado. Plano B: reconstruir os 7 usuários com fluxo administrativo seguro/password reset, preservando IDs quando possível; se IDs mudarem, remapear profiles/memberships e validar todas as FKs antes de liberar acesso. Nenhum plano foi executado remotamente.
+
+### Deploy baseline
+
+Cloudflare Wrangler `4.92.0` não está autenticado nesta máquina (`wrangler whoami`), e o repositório não contém URL, deployment ID ou SHA atualmente publicado. `.openai/hosting.json` identifica apenas o projeto Sites `appgprj_6a5ee794dc588191860b8c58b57bec77`; isso não prova o deployment ativo.
+
+Rollback de código é identificável para o RC1 pelo SHA `fed09a9758074b6fef318bc6cc1507990833c05b` e pelos commits anteriores, mas o alvo efetivamente publicado é **INCERTO**. Antes do rollout, registrar no painel Cloudflare a URL, deployment ID, SHA, data/hora, bindings e configuração pública; sem isso, abortar.
+
+### Matriz de recovery
+
+| Componente | Backup existe? | Restore provado? | Método | RPO | Risco residual |
+|---|---|---|---|---|---|
+| PostgreSQL schema | Sim | Sim | `supabase db dump` + psql local | ponto do dump | GREEN |
+| PostgreSQL public/storage data | Sim | Sim | dump sanitizado + database local | ponto do dump | GREEN |
+| Auth | Inventário sim; export sensível não | Não | backup oficial ou reconstrução/password reset | definido pelo backup futuro | RED |
+| Storage metadata | Sim | Sim | dump SQL | ponto do dump | GREEN |
+| Storage binaries | Inventário sim; bytes não | Não | Dashboard/S3/API oficial | ponto do download futuro | RED |
+| Frontend | Código RC sim | Deployment ativo não | Git SHA + Cloudflare Sites | último SHA registrado | YELLOW |
+| Worker/Functions | Código RC sim; Edge Functions nenhuma listada | Deployment ativo não | Git SHA/artefato | último SHA registrado | YELLOW |
+| Config | `.env.example`/hosting metadata sim | Config remota não | inventário manual/Management API | desconhecido | RED |
+
+Qualquer componente crítico RED bloqueia rollout. O próximo passo mínimo é obter, com autorização humana, cópia física dos 4 objetos, backup/restore Auth oficial ou decisão formal de reconstrução, e baseline Cloudflare documentado.
+
+### Fontes oficiais consultadas
+
+- [Supabase Database Backups](https://supabase.com/docs/guides/platform/backups): backup de banco não inclui bytes dos objetos Storage.
+- [Supabase Download Objects](https://supabase.com/docs/guides/storage/management/download-objects): Dashboard/S3/CLI são caminhos oficiais para obter objetos.
+- [Supabase Migrating Auth Users](https://supabase.com/docs/guides/troubleshooting/migrating-auth-users-between-projects): backup completo ou SQL do schema Auth pode preservar usuários e hashes, com tratamento sensível.
