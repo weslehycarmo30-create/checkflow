@@ -7,9 +7,15 @@ SHA `origin/main`: `eee7c64f36959284a12a5b06bc433b3358809fbd`
 
 ## Status
 
-**BLOCKED**
+**READY FOR ROLLOUT COM RESSALVAS**
 
-O projeto remoto correto foi identificado, mas o rollout não é seguro para autorização porque as migrations do RC1 não estão registradas/aplicadas e não há backup recuperável comprovado nem PITR habilitado. Nenhuma alteração remota foi feita.
+O projeto remoto correto foi identificado. O rollout está tecnicamente preparado para a primeira escrita controlada, condicionado à autorização humana no momento da execução. As migrations do RC1 ainda não estão registradas/aplicadas no remoto; o dry-run das cinco migrations, em ordem, passou sobre uma cópia descartável do estado remoto restaurado. Nenhuma alteração remota foi feita.
+
+### Decisão humana do proprietário — missão 012
+
+O proprietário confirmou que ainda não existe cliente real, venda, operação comercial ou dado de cliente em produção. Os 7 usuários Auth e os 4 objetos Storage são exclusivamente dados de teste do próprio proprietário; sua recriação/perda é aceitável para o primeiro piloto. Esta classificação é **ACCEPTED RISK**, não autorização para apagar dados: nenhum `DELETE`, reset de Auth, alteração Storage ou operação destrutiva está autorizado nesta missão.
+
+Classificação vigente: PostgreSQL schema/data **GREEN**; Storage metadata **GREEN**; Auth e Storage binaries antigos **ACCEPTED RISK FOR FIRST PILOT**; baseline comercial anterior **NOT APPLICABLE FOR CUSTOMER ROLLBACK**. O Worker/Functions remoto antigo não é requisito do RC1; a primeira publicação estabelecerá uma nova baseline.
 
 ## Ambiente remoto identificado
 
@@ -57,6 +63,12 @@ Edge Functions observáveis pela CLI: nenhuma listada.
 | `202608260002_execution_historical_snapshot.sql` | NÃO APLICADA; `execution_snapshot` ausente | ALTO | `ALTER TABLE`, funções/triggers `SECURITY DEFINER` e proteção de registros concluídos; exige validação de dados legados antes da aplicação. |
 
 Não foram observados `DROP TABLE`, mas há `DROP POLICY`/`DROP TRIGGER` seguido de replacement, criação de funções `SECURITY DEFINER`, `REVOKE`, triggers e alteração de bucket. A ordem obrigatória é exatamente a tabela acima; parar após cada etapa se a validação correspondente falhar.
+
+### Decisão de estratégia — missão 012
+
+Estratégia escolhida: **A — aplicar as cinco migrations existentes diretamente**, em ordem, sem editar migrations históricas e sem criar migration forward. A prova local executou exatamente os cinco arquivos contra a cópia restaurada do schema/dados remoto, com `ON_ERROR_STOP=1`; os cinco passaram. A natureza repetível foi observada em `CREATE ... IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY/TRIGGER` seguido de criação e `ADD COLUMN IF NOT EXISTS`. A escrita de policies, triggers, funções `SECURITY DEFINER`, `REVOKE`, bucket e coluna histórica continua sendo operação de alto impacto e exige os STOP points do plano de release.
+
+Como a tabela de histórico remoto estava vazia na última consulta, o primeiro push deve usar a CLI Supabase atual e `supabase db push --linked --dry-run`; se a lista mostrar exatamente as cinco versões, executar o push normal. Não usar `migration repair` para mascarar divergência. Se o dry-run remoto não listar as cinco versões ou acusar drift, parar e gerar uma reconciliação versionada separada.
 
 ## Preflight de dados
 
@@ -123,6 +135,19 @@ Validar também isolamento entre duas organizações de teste e ausência de ace
 6. O próximo passo pode ser somente execução controlada do release? **Não; o próximo passo é preflight de backup/rollback e aprovação humana.**
 
 Produção não foi alterada. Nenhuma migration remota, alteração de dados, deploy ou publicação foi realizada.
+
+## Fechamento do final release gate — missão 012
+
+- SHA inicial/final desta missão: `0d204f8d51e2fad059ae1962780d94d834d67c83` antes das alterações documentais; SHA final será registrado após o commit.
+- RC1 revalidado: `npm test` 22/22, build Sites válido, SQL P0 PASS, histórico PASS, TypeScript e lint sem erro.
+- Dry-run remoto atual copiado localmente: preservou 2 organizations, 7 memberships, 7 checklists, 11 assignments, 6 executions, 17 answers, 2 non-conformities, 1 action plan e 4 objetos Storage; órfãos/cross-tenant: zero.
+- Pós-migration: RLS desabilitado em tabelas públicas: zero; `execution_snapshot`: presente; trigger histórico: presente; nenhuma relação cross-tenant.
+- Migration forward: **não criada**.
+- P0/P1 técnico restante: **nenhum conhecido**.
+- RED não aceito conscientemente: **nenhum**; os riscos antigos de Auth/Storage binaries são aceitos formalmente pelo proprietário para o primeiro piloto.
+- Target: Sites hosting do projeto `.openai/hosting.json`, build `npm run build`, publicação pelo pipeline Sites no commit aprovado; não usar o Worker antigo `clip-flow-ai-remix` como alvo.
+
+O remoto foi consultado novamente quanto ao projeto/estado e permanece `Check List Flow Project` / `fzmzrtthmciaisygajba`. A CLI instalada nesta máquina é `2.95.4`, enquanto o preflight anterior usou `2.116.0`; por isso a confirmação detalhada de migration history permanece baseada na última leitura oficial registrada, e deverá ser repetida pelo comando do plano imediatamente antes da primeira escrita.
 
 ## Atualização de recovery — missão 010
 

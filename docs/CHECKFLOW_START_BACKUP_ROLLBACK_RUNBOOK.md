@@ -8,9 +8,9 @@ RC1: `fed09a9758074b6fef318bc6cc1507990833c05b`
 
 ## Status
 
-**BACKUP READY COM RESSALVAS**
+**READY FOR ROLLOUT COM RESSALVAS**
 
-O backup PostgreSQL foi exportado, recebeu checksum e foi restaurado com sucesso em database local descartável. Auth e conteúdo binário do Storage não foram exportados para não armazenar senhas, hashes, sessões ou tokens; ambos têm inventário e plano de recuperação explícito. O rollout continua proibido até um responsável confirmar backup completo de Auth/Storage e rollback operacional.
+O backup PostgreSQL foi exportado, recebeu checksum e foi restaurado com sucesso em database local descartável. Auth e conteúdo binário do Storage não foram exportados para não armazenar senhas, hashes, sessões ou tokens; ambos estão formalmente classificados como **ACCEPTED RISK FOR FIRST PILOT**, porque o proprietário confirmou que são dados exclusivamente de teste e não há cliente real. A primeira escrita ainda exige autorização humana explícita e os STOP points do plano de release.
 
 ## Backup PostgreSQL
 
@@ -119,6 +119,35 @@ Responsável pelo GO/ROLLBACK: ainda não designado nesta sessão; deve ser nome
 9. Seguro voltar ao gate de rollout? **Não ainda; exigir confirmação humana de backup completo Auth/Storage e rollback operacional.**
 
 Produção não foi alterada. Nenhuma migration remota, deploy, publicação, inserção ou alteração de dados foi realizada.
+
+## Decisão humana e classificação de recovery — missão 012
+
+O proprietário confirmou formalmente: não há cliente vendido, cliente real em produção, operação comercial dependente do deployment ou dado de cliente a preservar. Os 7 usuários Auth e os 4 objetos Storage atuais são exclusivamente testes do proprietário. Recriação/perda desses dados de teste é aceitável para o primeiro piloto. Isso é **ACCEPTED RISK**, não autorização para apagar: nenhum `DELETE`, reset de Auth, upload, move, overwrite ou outra operação destrutiva foi autorizada nesta missão.
+
+Matriz vigente:
+
+| Componente | Classificação para o primeiro piloto | Justificativa |
+|---|---|---|
+| PostgreSQL schema/data | GREEN | dump com checksum e restore local comprovado |
+| Auth atual | ACCEPTED RISK | 7 contas de teste do proprietário; recriação/password reset aceitável |
+| Storage metadata | GREEN | metadata preservada no dump/restore |
+| Storage binaries antigos | ACCEPTED RISK | 4 evidências exclusivamente de teste; nenhum cliente afetado |
+| Frontend baseline anterior | NOT APPLICABLE FOR CUSTOMER ROLLBACK | não existe produção comercial anterior |
+| Worker/Functions | validar somente o necessário ao RC1 | nenhum Worker antigo é dependência assumida do primeiro rollout |
+
+O accepted risk não encobre um risco comercial: ele delimita conscientemente o primeiro piloto e não autoriza exclusão de dados.
+
+## Dry-run de upgrade do estado remoto — missão 012
+
+Os dumps do estado remoto atual foram restaurados em PostgreSQL Docker descartável. As cinco migrations históricas foram executadas exatamente em ordem, com `ON_ERROR_STOP=1`, e todas passaram. A incompatibilidade de colunas internas `auth.users` entre a imagem local e o dump foi isolada ao role interno da imagem; uma coluna de compatibilidade foi adicionada somente ao container descartável para executar os fixtures. Nenhum arquivo histórico foi editado e nenhum comando foi dirigido ao remoto.
+
+Resultado: dados preservados (2 organizations, 7 memberships, 7 checklists, 11 assignments, 6 executions, 17 answers, 2 non-conformities, 1 action plan, 4 metadata Storage); zero órfãos e zero links cross-tenant; RLS público completo; `execution_snapshot` e triggers históricos presentes. Os testes SQL P0 e de integridade histórica passaram e fizeram `ROLLBACK` dos fixtures.
+
+Estratégia aprovada para a primeira escrita: aplicar diretamente as cinco migrations existentes, sem migration forward e sem `migration repair`. Antes da escrita, `supabase db push --linked --dry-run` deve listar exatamente as cinco versões. Qualquer lista diferente, erro ou drift é STOP.
+
+## Target de primeira publicação
+
+O código é um Site Vinext/Cloudflare Sites, não o Worker antigo identificado como `clip-flow-ai-remix`. O pipeline esperado executa `npm run build` no commit aprovado e publica o artefato Sites; `.openai/hosting.json` contém o identificador do projeto de hosting. O deploy não foi executado nesta missão. As variáveis públicas `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` devem ser configuradas no ambiente do Site; `SUPABASE_SERVICE_ROLE_KEY`, se necessária para o endpoint server-side de convite, deve ser secret server-side. A URL final será registrada no STOP de health após a publicação.
 
 ## Atualização do recovery gap — missão 010
 
