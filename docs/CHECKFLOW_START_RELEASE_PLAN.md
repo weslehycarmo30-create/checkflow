@@ -1,7 +1,7 @@
 # CheckFlow Start — First Release Plan
 
-Data: 2026-08-28  
-RC: `codex/checkflow-start-rc1`  
+Data: 2026-08-28
+RC: `codex/checkflow-start-rc1`
 SHA aprovado: `0d204f8d51e2fad059ae1962780d94d834d67c83`
 
 ## Baseline
