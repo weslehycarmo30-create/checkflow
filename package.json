@@ -7,13 +7,13 @@
   },
   "scripts": {
     "install:ci": "bash scripts/install-ci.sh",
-    "dev": "vite",
-    "build": "bash scripts/build-verified.sh",
-    "start": "vinext start",
+    "dev": "vinext dev --hostname 127.0.0.1 --port 3000",
+    "build": "node scripts/build-verified.mjs",
+    "start": "vinext start --hostname 127.0.0.1 --port 3000",
     "test": "npm run build && node --test tests/*.test.mjs",
     "validate:artifact": "bash scripts/validate-artifact.sh",
-    "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"
+    "lint": "node scripts/run-local.mjs -- eslint . --ignore-pattern dist --ignore-pattern .next",
+    "db:generate": "node scripts/run-local.mjs -- drizzle-kit generate"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
@@ -34,6 +34,7 @@
     "drizzle-kit": "0.31.10",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
+    "playwright-core": "^1.58.2",
     "react-server-dom-webpack": "19.2.6",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3",
