@@ -164,3 +164,25 @@ Qualquer componente crítico RED bloqueia rollout. O próximo passo mínimo é o
 - [Supabase Database Backups](https://supabase.com/docs/guides/platform/backups): backup de banco não inclui bytes dos objetos Storage.
 - [Supabase Download Objects](https://supabase.com/docs/guides/storage/management/download-objects): Dashboard/S3/CLI são caminhos oficiais para obter objetos.
 - [Supabase Migrating Auth Users](https://supabase.com/docs/guides/troubleshooting/migrating-auth-users-between-projects): backup completo ou SQL do schema Auth pode preservar usuários e hashes, com tratamento sensível.
+
+## Diagnóstico executável — missão 011
+
+### Classificação dos três REDs
+
+| Componente | Status | Bloqueador | Próxima ação |
+|---|---|---|---|
+| Storage binaries | HUMAN AUTH REQUIRED | CLI remota recusou `storage cp`; bucket privado exige credencial autorizada | Humano baixar os 4 paths pelo Dashboard ou Storage API/S3 oficial e calcular SHA-256 |
+| Auth recovery | HUMAN AUTH REQUIRED | export de dados `auth` resultou vazio; somente schema Auth foi exportado | Humano obter backup/export Auth oficial com permissão adequada e testar restore isolado |
+| Cloudflare baseline | HUMAN AUTH REQUIRED | Wrangler não autenticado | Humano executar login e consultar deployments read-only |
+
+O projeto remoto foi novamente confirmado como `fzmzrtthmciaisygajba`, ativo e saudável. Não existem variáveis de ambiente relevantes disponíveis nesta máquina. Não foi impresso nem armazenado token.
+
+O export `auth-schema.sql` foi criado fora do repositório, mas contém somente definição de schema. O arquivo `auth-data.sql` resultou em zero bytes; portanto não é backup de `auth.users`/`auth.identities` e não foi tratado como tal. Nenhum restore Auth foi executado.
+
+### AÇÃO HUMANA AGORA
+
+1. **Dashboard Supabase / Storage** — abrir o projeto `fzmzrtthmciaisygajba`, bucket privado `checkflow-evidence`, e baixar os 4 objetos preservando os paths; resultado esperado: 4 arquivos locais com tamanho, MIME e SHA-256 conferidos contra o inventário; **não autorizar upload, delete, move ou update**.
+2. **Supabase Support/Database backup autorizado** — obter export ou backup oficial que inclua `auth.users` e `auth.identities`, armazená-lo fora do Git e fornecer somente metadados/checksum; resultado esperado: restore testável em ambiente descartável; **não autorizar criação, alteração ou reset de usuários remotos**.
+3. **PowerShell / Cloudflare** — executar `wrangler login` e depois `wrangler deployments list` em modo leitura; resultado esperado: conta, URL, deployment ativo, timestamp e SHA identificados; **não autorizar deploy, alteração de configuração ou publicação**.
+
+Até essas ações, os três componentes permanecem RED. Não há problema de programação identificado; são bloqueios de permissão/autenticação humana.

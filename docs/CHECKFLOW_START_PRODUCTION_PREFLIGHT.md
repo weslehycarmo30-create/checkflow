@@ -135,3 +135,19 @@ Auth permanece sem export restaurável comprovado: há 7 usuários, 7 identities
 O baseline do deploy também permanece incompleto: `.openai/hosting.json` identifica o projeto Cloudflare Sites, mas `wrangler whoami` não autenticou e não foi possível determinar URL, deployment ID ou SHA atualmente publicado. O alvo de rollback publicado é, portanto, **incerto**.
 
 Conclusão atualizada: **BLOCKED** para rollout. Os componentes críticos `Auth`, `Storage binaries` e `Config/deployment baseline` permanecem RED. A menor ação seguinte é obter, por acesso humano autorizado, a cópia física dos 4 objetos, um mecanismo comprovado de recuperação Auth e o registro do deployment Cloudflare ativo, sem alterar produção.
+
+## Diagnóstico executável — missão 011
+
+Os três REDs foram testados separadamente, somente em leitura:
+
+| Componente | Status | Bloqueador | Próxima ação |
+|---|---|---|---|
+| Storage binaries | HUMAN AUTH REQUIRED | `supabase storage cp` remoto recusado como operação não suportada; bucket privado | Download humano dos 4 objetos via Dashboard ou Storage API/S3 oficial |
+| Auth recovery | HUMAN AUTH REQUIRED | dump de dados `auth` vazio; schema Auth isolado não contém usuários | Export/backup Auth oficial autorizado e restore test local |
+| Cloudflare baseline | HUMAN AUTH REQUIRED | `wrangler whoami`: não autenticado | `wrangler login`, seguido de consulta read-only de deployments |
+
+O projeto Supabase `fzmzrtthmciaisygajba` foi confirmado novamente. Não há credenciais Supabase/Cloudflare relevantes em variáveis de ambiente. Não foram feitos login, upload, download remoto de objetos, alterações de dados ou deploy.
+
+Não existe defeito de produto ou necessidade de programação para esses três bloqueios. A menor sequência humana está documentada no runbook: baixar Storage, obter backup Auth oficial e autenticar Wrangler apenas para consulta de deployments.
+
+Status global desta missão: **HUMAN AUTH REQUIRED**. O rollout continua bloqueado até os componentes críticos deixarem de ser RED.
