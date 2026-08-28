@@ -137,6 +137,14 @@ Matriz vigente:
 
 O accepted risk não encobre um risco comercial: ele delimita conscientemente o primeiro piloto e não autoriza exclusão de dados.
 
+## FASE 1 executada — missão 013
+
+As cinco migrations RC1 foram aplicadas no projeto `fzmzrtthmciaisygajba` pela CLI Supabase `2.116.0`, exatamente na ordem aprovada, com sucesso. Janela UTC: `2026-08-28T14:37:39.8482353Z`–`2026-08-28T14:37:53.1223423Z`; duração medida: 13,274 s. O histórico final remoto contém todas as cinco versões.
+
+Postflight: contagens preservadas (`2 organizations`, `7 memberships`, `7 checklists`, `6 executions`, `17 responses`, `2 nonconformities`, `1 action plan`, `4 Storage metadata`); zero órfãos e cross-tenant; RLS completo; `execution_snapshot` e triggers presentes; Storage privado; testes P0/histórico reversíveis passaram.
+
+Ressalva P1 descoberta após a aplicação: os advisors reportaram 155 warnings e o privilégio efetivo confirmou `EXECUTE` para `anon` em funções `SECURITY DEFINER` expostas no schema público, inclusive funções de snapshot/proteção histórica. Não fazer deploy nem smoke frontend. A correção mínima é uma nova migration versionada que revogue explicitamente `EXECUTE` de `anon`/`public` nas funções não públicas, seguida de novo postflight; essa correção não foi criada nem aplicada nesta missão.
+
 ## Dry-run de upgrade do estado remoto — missão 012
 
 Os dumps do estado remoto atual foram restaurados em PostgreSQL Docker descartável. As cinco migrations históricas foram executadas exatamente em ordem, com `ON_ERROR_STOP=1`, e todas passaram. A incompatibilidade de colunas internas `auth.users` entre a imagem local e o dump foi isolada ao role interno da imagem; uma coluna de compatibilidade foi adicionada somente ao container descartável para executar os fixtures. Nenhum arquivo histórico foi editado e nenhum comando foi dirigido ao remoto.

@@ -149,6 +149,14 @@ Produção não foi alterada. Nenhuma migration remota, alteração de dados, de
 
 O remoto foi consultado novamente quanto ao projeto/estado e permanece `Check List Flow Project` / `fzmzrtthmciaisygajba`. A CLI instalada nesta máquina é `2.95.4`, enquanto o preflight anterior usou `2.116.0`; por isso a confirmação detalhada de migration history permanece baseada na última leitura oficial registrada, e deverá ser repetida pelo comando do plano imediatamente antes da primeira escrita.
 
+## Resultado da FASE 1 — missão 013
+
+As cinco migrations foram aplicadas exatamente no projeto `fzmzrtthmciaisygajba` pela CLI `2.116.0`, entre `2026-08-28T14:37:39.8482353Z` e `2026-08-28T14:37:53.1223423Z`, exit code 0. O history remoto registra as cinco versões, na ordem aprovada. As contagens permaneceram `2/7/7/6/17/2/1/4` para organizations/memberships/checklists/executions/responses/nonconformities/action_plans/Storage metadata.
+
+RLS, integridade tenant, órfãos, snapshot, triggers e Storage privado passaram. Os testes P0 e histórico foram executados remotamente em transações com rollback e passaram.
+
+O advisor Supabase não retornou `ERROR`, mas retornou 155 warnings; o postflight confirmou um P1 de segurança: funções `SECURITY DEFINER` públicas, incluindo `build_execution_snapshot`, `capture_and_protect_execution_snapshot`, `protect_completed_execution_records` e `validate_checkflow_tenant_links`, continuam com `EXECUTE` para `anon`. Isso requer uma migration corretiva versionada e novo teste; não foi corrigido nesta missão por estar fora das cinco migrations autorizadas. Portanto o banco não está liberado para deploy/FASE 2.
+
 ## Atualização de recovery — missão 010
 
 O dump PostgreSQL previamente comprovado continua válido: schema e dados públicos/Storage foram restaurados em database local isolado, com checksums registrados. O stack local foi encerrado após o ensaio.

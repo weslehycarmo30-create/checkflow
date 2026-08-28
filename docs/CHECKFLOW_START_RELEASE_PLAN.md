@@ -54,3 +54,9 @@ Durante migration: parar no primeiro erro e não avançar. Se houver backup rest
 Status: **READY FOR ROLLOUT COM RESSALVAS**. Nenhum P0/P1 técnico conhecido e nenhum RED não aceito conscientemente pelo proprietário. Nenhum rollout foi executado.
 
 **AGUARDANDO AUTORIZAÇÃO HUMANA PARA PRIMEIRA ESCRITA EM PRODUÇÃO.**
+
+## FASE 1 database rollout — missão 013
+
+Status: **SUCCESS COM RESSALVAS**. As cinco migrations foram aplicadas e registradas no projeto autorizado, com todas as contagens e invariantes preservadas. Nenhum deploy foi executado.
+
+Bloqueador P1: o postflight detectou 155 warnings e `EXECUTE` efetivo para `anon` em funções `SECURITY DEFINER` públicas de snapshot, proteção histórica e validação tenant. A FASE 2 está bloqueada até existir migration corretiva versionada, aplicada com autorização própria, e novo postflight sem essa exposição. Não executar correção manual, deploy ou smoke enquanto isso.
