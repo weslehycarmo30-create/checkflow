@@ -35,6 +35,7 @@ export default function ChecklistDetail({ checklistId }: { checklistId: string }
   const [units,setUnits] = useState<Unit[]>([]);
   const [assignments,setAssignments] = useState<Assignment[]>([]);
   const [hasExecution,setHasExecution] = useState(false);
+  const [structureCheckError,setStructureCheckError] = useState(false);
   const [role,setRole] = useState("");
   const [userId,setUserId] = useState("");
   const [loading,setLoading] = useState(true);
@@ -50,13 +51,25 @@ export default function ChecklistDetail({ checklistId }: { checklistId: string }
   const [editingItemId,setEditingItemId] = useState<string | null>(null);
   const [editingItemPrompt,setEditingItemPrompt] = useState("");
   const [editingItemType,setEditingItemType] = useState("checkbox");
+  const [editingSectionId,setEditingSectionId] = useState<string | null>(null);
+  const [editingSectionTitle,setEditingSectionTitle] = useState("");
   const [assignedTo,setAssignedTo] = useState("");
   const [unitId,setUnitId] = useState("");
   const [dueAt,setDueAt] = useState("");
   const [busy,setBusy] = useState(false);
   const actionLock = useRef(false);
   const canManage = role === "owner" || role === "manager";
-  const canEditStructure = canManage && checklist?.status === "draft" && !hasExecution && assignments.length === 0;
+  const canEditStructureBase = canManage && checklist?.status === "draft" && !hasExecution && assignments.length === 0;
+  const canEditStructure = canEditStructureBase && !structureCheckError;
+  const structureLockReason = structureCheckError
+    ? "Estrutura bloqueada porque não foi possível confirmar atribuições ou histórico."
+    : checklist?.status !== "draft"
+    ? "Estrutura bloqueada porque o checklist não está em rascunho."
+    : hasExecution
+      ? "Estrutura bloqueada porque já existe uma execução ou histórico protegido."
+      : assignments.length > 0
+        ? "Estrutura bloqueada porque o checklist já foi atribuído."
+        : "";
 
   const beginAction = () => {
     if (actionLock.current || !canManage) return false;
@@ -95,6 +108,7 @@ clearFeedback();
     setName(current.name);
     setDescription(current.description || "");
     setCategory(current.category || "");
+    setStructureCheckError(false);
     const [{ data: membership }, { data: sectionData, error: sectionError }, { data: memberData }, { data: unitData }, { data: assignmentData, error: assignmentLoadError }, { data: executionData, error: executionLoadError }] = await Promise.all([
       supabase.from("organization_members").select("role").eq("organization_id", current.organization_id).eq("user_id", user.id).eq("active", true).maybeSingle(),
       supabase.from("checklist_sections").select("id,title,position,checklist_items(id,prompt,answer_type,required,position)").eq("checklist_id", checklistId).order("position"),
@@ -120,6 +134,7 @@ clearFeedback();
     setUnits(loadedUnits);
     if (assignmentLoadError) setError(assignmentLoadError.message);
     if (executionLoadError) setError(executionLoadError.message);
+    setStructureCheckError(Boolean(assignmentLoadError || executionLoadError));
     setHasExecution(Boolean(executionData?.length));
     setAssignments((assignmentData || []).map(assignment => ({
       ...assignment,
@@ -232,6 +247,60 @@ showFeedback(existing?.length ? "Atribuição atualizada sem duplicidade." : "Ch
     endAction();
   };
 
+  const startSectionEdit = (section:Section) => {
+    if (!canEditStructure) return;
+    setEditingSectionId(section.id);
+    setEditingSectionTitle(section.title);
+    setError("");
+    clearFeedback();
+  };
+
+  const saveSection = async () => {
+    if (!checklist || !editingSectionId || !editingSectionTitle.trim() || !canEditStructure || !beginAction()) return;
+    try {
+      const supabase = await initializeSupabaseBrowserClient();
+      if (!supabase) { setError("Supabase não configurado."); return; }
+      const { data, error: updateError } = await supabase.from("checklist_sections").update({
+        title: editingSectionTitle.trim(),
+      }).eq("id", editingSectionId).eq("organization_id", checklist.organization_id).eq("checklist_id", checklist.id).select("id").maybeSingle();
+      if (updateError || !data) { setError(updateError?.message || "A seção não foi atualizada."); return; }
+      setEditingSectionId(null);
+      await load();
+      showFeedback("Seção atualizada.");
+    } finally { endAction(); }
+  };
+
+  const removeSection = async (section:Section) => {
+    if (!checklist || !canEditStructure) return;
+    const itemCount = section.checklist_items.length;
+    const confirmation = itemCount > 0
+      ? `Excluir a seção "${section.title}"? Os ${itemCount} item(ns) desta seção também serão removidos. Esta ação não afeta execuções ou histórico protegido.`
+      : `Excluir a seção "${section.title}"?`;
+    if (!window.confirm(confirmation) || !beginAction()) return;
+    try {
+      const supabase = await initializeSupabaseBrowserClient();
+      if (!supabase) { setError("Supabase não configurado."); return; }
+      const [{ data: currentAssignments, error: assignmentCheckError }, { data: currentExecutions, error: executionCheckError }] = await Promise.all([
+        supabase.from("checklist_assignments").select("id").eq("organization_id", checklist.organization_id).eq("checklist_id", checklist.id).eq("active", true).limit(1),
+        supabase.from("checklist_executions").select("id").eq("checklist_id", checklist.id).limit(1),
+      ]);
+      if (assignmentCheckError || executionCheckError) {
+        setError("Não foi possível confirmar se a estrutura está protegida. A seção não foi removida.");
+        return;
+      }
+      if (currentAssignments?.length || currentExecutions?.length) {
+        setError("A seção não pode ser removida porque o checklist já foi atribuído ou possui execução/histórico protegido.");
+        await load();
+        return;
+      }
+      const { data, error: deleteError } = await supabase.from("checklist_sections").delete()
+        .eq("id", section.id).eq("organization_id", checklist.organization_id).eq("checklist_id", checklist.id).select("id").maybeSingle();
+      if (deleteError || !data) { setError(deleteError?.message || "A seção não foi removida."); return; }
+      await load();
+      showFeedback("Seção removida.");
+    } finally { endAction(); }
+  };
+
   const startItemEdit = (item:Item) => {
     if (!canEditStructure) return;
     setEditingItemId(item.id);
@@ -288,7 +357,18 @@ showFeedback("Item removido.");
         <article className="detail-card">
           <div className="detail-heading"><div><h2>Seções e itens</h2><p>Conteúdo atual deste checklist.</p></div></div>
           {sections.length===0&&<p className="empty-state">Nenhuma seção cadastrada.</p>}
-          {sections.map(section=><div className="checklist-section" key={section.id}><h3>{section.title}</h3>{section.checklist_items.length===0&&<p className="empty-state">Nenhum item nesta seção.</p>}{section.checklist_items.map(item=><div className="checklist-item" key={item.id}><span className="item-check item-unanswered" aria-label="Item ainda não executado"></span>{editingItemId===item.id?<div className="item-edit-form"><input aria-label="Texto do item" value={editingItemPrompt} disabled={busy} onChange={event=>setEditingItemPrompt(event.target.value)}/><select aria-label="Tipo do item" value={editingItemType} disabled={busy} onChange={event=>setEditingItemType(event.target.value)}><option value="checkbox">Checkbox</option><option value="yes_no">Sim ou não</option><option value="short_text">Texto curto</option><option value="long_text">Texto longo</option><option value="number">Número</option><option value="date">Data</option><option value="time">Horário</option><option value="photo">Fotografia</option><option value="rating">Avaliação 0 a 10</option></select><button className="secondary" disabled={busy||!editingItemPrompt.trim()} onClick={saveItem}>Salvar item</button><button className="secondary" disabled={busy} onClick={()=>setEditingItemId(null)}>Cancelar</button></div>:<><span><strong>{item.prompt}</strong><small>{item.required?"Obrigatório":"Opcional"} · {item.answer_type}</small></span>{canEditStructure&&<span className="item-actions"><button type="button" className="text-link" onClick={()=>startItemEdit(item)}>Editar item</button><button type="button" className="text-link danger-link" onClick={()=>removeItem(item)}>Remover</button></span>}</>}</div>)}{canManage&&<div className="inline-create item-create"><input value={itemPrompt[section.id]||""} disabled={busy} onChange={event=>setItemPrompt(current=>({...current,[section.id]:event.target.value}))} placeholder="Novo item obrigatório"/><select value={itemType[section.id]||"checkbox"} disabled={busy} onChange={event=>setItemType(current=>({...current,[section.id]:event.target.value}))} aria-label="Tipo de resposta"><option value="checkbox">Checkbox</option><option value="yes_no">Sim ou não</option><option value="short_text">Texto curto</option><option value="long_text">Texto longo</option><option value="number">Número</option><option value="date">Data</option><option value="time">Horário</option><option value="photo">Fotografia</option><option value="rating">Avaliação 0 a 10</option></select><button className="secondary" disabled={busy||!itemPrompt[section.id]?.trim()} onClick={()=>addItem(section.id)}>{busy?"Salvando...":"Adicionar item"}</button></div>}{canManage&&!canEditStructure&&<p className="structure-lock">Estrutura bloqueada após atribuição ou execução.</p>}</div>)}
+          {sections.map(section=><div className="checklist-section" key={section.id}>
+            <div className="section-heading">
+              {editingSectionId===section.id
+                ? <div className="section-edit-form"><input aria-label="Nome da seção" value={editingSectionTitle} disabled={busy} onChange={event=>setEditingSectionTitle(event.target.value)}/><button className="secondary" disabled={busy||!editingSectionTitle.trim()} onClick={saveSection}>Salvar seção</button><button className="secondary" disabled={busy} onClick={()=>setEditingSectionId(null)}>Cancelar</button></div>
+                : <h3>{section.title}</h3>}
+              {canManage&&editingSectionId!==section.id&&<div className="section-actions"><button type="button" className="text-link" disabled={busy||!canEditStructure} title={structureLockReason} onClick={()=>startSectionEdit(section)}>Editar seção</button><button type="button" className="text-link danger-link" disabled={busy||!canEditStructure} title={structureLockReason} onClick={()=>removeSection(section)}>Excluir seção</button></div>}
+            </div>
+            {section.checklist_items.length===0&&<p className="empty-state">Nenhum item nesta seção.</p>}
+            {section.checklist_items.map(item=><div className="checklist-item" key={item.id}><span className="item-check item-unanswered" aria-label="Item ainda não executado"></span>{editingItemId===item.id?<div className="item-edit-form"><input aria-label="Texto do item" value={editingItemPrompt} disabled={busy} onChange={event=>setEditingItemPrompt(event.target.value)}/><select aria-label="Tipo do item" value={editingItemType} disabled={busy} onChange={event=>setEditingItemType(event.target.value)}><option value="checkbox">Checkbox</option><option value="yes_no">Sim ou não</option><option value="short_text">Texto curto</option><option value="long_text">Texto longo</option><option value="number">Número</option><option value="date">Data</option><option value="time">Horário</option><option value="photo">Fotografia</option><option value="rating">Avaliação 0 a 10</option></select><button className="secondary" disabled={busy||!editingItemPrompt.trim()} onClick={saveItem}>Salvar item</button><button className="secondary" disabled={busy} onClick={()=>setEditingItemId(null)}>Cancelar</button></div>:<><span><strong>{item.prompt}</strong><small>{item.required?"Obrigatório":"Opcional"} · {item.answer_type}</small></span>{canEditStructure&&<span className="item-actions"><button type="button" className="text-link" onClick={()=>startItemEdit(item)}>Editar item</button><button type="button" className="text-link danger-link" onClick={()=>removeItem(item)}>Remover</button></span>}</>}</div>)}
+            {canManage&&<div className="inline-create item-create"><input value={itemPrompt[section.id]||""} disabled={busy} onChange={event=>setItemPrompt(current=>({...current,[section.id]:event.target.value}))} placeholder="Novo item obrigatório"/><select value={itemType[section.id]||"checkbox"} disabled={busy} onChange={event=>setItemType(current=>({...current,[section.id]:event.target.value}))} aria-label="Tipo de resposta"><option value="checkbox">Checkbox</option><option value="yes_no">Sim ou não</option><option value="short_text">Texto curto</option><option value="long_text">Texto longo</option><option value="number">Número</option><option value="date">Data</option><option value="time">Horário</option><option value="photo">Fotografia</option><option value="rating">Avaliação 0 a 10</option></select><button className="secondary" disabled={busy||!itemPrompt[section.id]?.trim()} onClick={()=>addItem(section.id)}>{busy?"Salvando...":"Adicionar item"}</button></div>}
+            {canManage&&!canEditStructure&&<p className="structure-lock">{structureLockReason}</p>}
+          </div>)}
           {canManage&&<div className="inline-create section-create"><input value={sectionTitle} disabled={busy} onChange={event=>setSectionTitle(event.target.value)} placeholder="Nome da nova seção"/><button className="secondary" disabled={busy||!sectionTitle.trim()} onClick={addSection}>{busy?"Salvando...":"Adicionar seção"}</button></div>}
         </article>
       </section>
