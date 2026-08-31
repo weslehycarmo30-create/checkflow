@@ -10,6 +10,8 @@ test("owner/manager can rename an editable section", () => {
   assert.match(detail, /from\("checklist_sections"\)\.update/);
   assert.match(detail, /title: editingSectionTitle\.trim\(\)/);
   assert.match(detail, /aria-label="Nome da seção"/);
+  assert.match(detail, /className="section-actions" aria-label=\{`Ações da seção/);
+  assert.match(detail, /className="section-action-button"[^>]*aria-label=\{`Renomear seção/);
   assert.match(detail, /showFeedback\("Seção atualizada\."\)/);
 });
 
@@ -37,7 +39,7 @@ test("section changes are blocked when assignment or protected history exists", 
 });
 
 test("executor cannot edit or delete sections", () => {
-  assert.match(detail, /const canManage = role === "owner" \|\| role === "manager"/);
+  assert.match(detail, /const canManage = \["owner", "manager"\]\.includes\(role\.trim\(\)\.toLowerCase\(\)\)/);
   assert.match(detail, /canManage&&editingSectionId!==section\.id&&<div className="section-actions"/);
   assert.match(detail, /if \(!canEditStructure\) return;/);
 });
