@@ -6,6 +6,7 @@ import { PrivateRouteGuard } from "./private-route-guard";
 import { LogoutButton } from "./logout-button";
 import { initializeSupabaseBrowserClient } from "../lib/supabase";
 import { TeamManagement } from "./team-management";
+import { FeedbackMessage, useFeedback } from "./feedback";
 
 type ChecklistListItem = {
   id: string;
@@ -69,7 +70,7 @@ const templates = [
 export default function Home() {
   const [section,setSection] = useState("Visão geral");
   const [modal,setModal] = useState(false);
-  const [toast,setToast] = useState("");
+  const { feedback, showFeedback, clearFeedback } = useFeedback();
   const [query,setQuery] = useState("");
   const [mobile,setMobile] = useState(false);
   const [checklists,setChecklists] = useState<ChecklistListItem[]>([]);
@@ -84,7 +85,7 @@ export default function Home() {
   const [organizationName,setOrganizationName] = useState("Sua organização");
   const [profileName,setProfileName] = useState("Usuário");
   const filteredChecklists = useMemo(()=>checklists.filter(checklist=>!query || `${checklist.name} ${checklist.category||""}`.toLowerCase().includes(query.toLowerCase())),[checklists,query]);
-  const notify=(msg:string)=>{setToast(msg);setTimeout(()=>setToast(""),2600)};
+  const notify=(msg:string)=>showFeedback(msg);
   const loadChecklists = async () => {
     setChecklistsLoading(true);
     setChecklistsError("");
@@ -259,7 +260,7 @@ export default function Home() {
       {section!=="Visão geral"&&section!=="Modelos"&&section!=="Equipe e unidades"&&<Generic section={section} setModal={setModal} checklists={filteredChecklists} history={history} loading={checklistsLoading} error={checklistsError} viewerRole={viewerRole}/>}
     </main>
     {modal&&<CreateModal close={()=>setModal(false)} create={createChecklist}/>}
-    {toast&&<div className="toast"><span>✓</span>{toast}</div>}
+    <FeedbackMessage feedback={feedback} onClose={clearFeedback}/>
   </div>
 }
 

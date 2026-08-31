@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PrivateRouteGuard } from "../private-route-guard";
 import { initializeSupabaseBrowserClient } from "../../lib/supabase";
+import { FeedbackMessage, useFeedback } from "../feedback";
 
 type Plan = {
   id:string;
@@ -48,7 +49,7 @@ export default function ActionPlans() {
   const [loading,setLoading] = useState(true);
   const [busyId,setBusyId] = useState("");
   const [error,setError] = useState("");
-  const [notice,setNotice] = useState("");
+  const { feedback, showFeedback, clearFeedback } = useFeedback();
   const actionLock = useRef(false);
   const canManage = role==="owner" || role==="manager";
   const plansByOccurrence = useMemo(()=>new Set(plans.map(plan=>plan.non_conformity_id)),[plans]);
@@ -121,7 +122,7 @@ export default function ActionPlans() {
       setError("Selecione responsável e prazo.");
       return;
     }
-    actionLock.current=true; setBusyId(occurrence.id); setError(""); setNotice("");
+    actionLock.current=true; setBusyId(occurrence.id); setError(""); clearFeedback();
     const supabase=await initializeSupabaseBrowserClient();
     if (!supabase) { actionLock.current=false; setBusyId(""); return; }
     const {data:plan,error:planError}=await supabase.from("action_plans").insert({
@@ -145,7 +146,7 @@ export default function ActionPlans() {
         await supabase.from("action_plans").delete().eq("id",plan.id);
         setError(occurrenceUpdateError.message);
       } else {
-        setNotice("Plano de ação criado e atribuído.");
+        showFeedback("Plano de ação criado e atribuído.");
         await load();
       }
     }
@@ -158,7 +159,7 @@ export default function ActionPlans() {
     const extension=extensions[file.type];
     if (!extension) { setError("Envie uma fotografia JPG, PNG ou WebP."); return; }
     if (file.size>10*1024*1024) { setError("A fotografia deve ter no máximo 10 MB."); return; }
-    actionLock.current=true; setBusyId(plan.id); setError(""); setNotice("");
+    actionLock.current=true; setBusyId(plan.id); setError(""); clearFeedback();
     const supabase=await initializeSupabaseBrowserClient();
     if (!supabase) { actionLock.current=false; setBusyId(""); return; }
     const storagePath=`${organizationId}/action-plans/${plan.id}/${crypto.randomUUID()}.${extension}`;
@@ -173,7 +174,7 @@ export default function ActionPlans() {
         await supabase.storage.from("checkflow-evidence").remove([storagePath]);
         setError(updateError.message);
       } else {
-        setNotice("Correção enviada para validação do gestor.");
+        showFeedback("Correção enviada para validação do gestor.");
         await load();
       }
     }
@@ -182,7 +183,7 @@ export default function ActionPlans() {
 
   const validatePlan = async (plan:Plan,approved:boolean) => {
     if (!canManage || plan.status!=="awaiting_validation" || actionLock.current) return;
-    actionLock.current=true; setBusyId(plan.id); setError(""); setNotice("");
+    actionLock.current=true; setBusyId(plan.id); setError(""); clearFeedback();
     const supabase=await initializeSupabaseBrowserClient();
     if (!supabase) { actionLock.current=false; setBusyId(""); return; }
     const status=approved?"completed":"rejected";
@@ -195,7 +196,7 @@ export default function ActionPlans() {
     else {
       const {error:occurrenceError}=await supabase.from("non_conformities").update({status}).eq("id",plan.non_conformity_id).select("id").single();
       if (occurrenceError) setError(occurrenceError.message);
-      else { setNotice(approved?"Correção aprovada.":"Correção reprovada."); await load(); }
+      else { showFeedback(approved?"Correção aprovada.":"Correção reprovada."); await load(); }
     }
     actionLock.current=false; setBusyId("");
   };
@@ -232,6 +233,6 @@ export default function ActionPlans() {
       </section>}
     </div>
     {error&&organizationId&&<p className="detail-message error">{error}</p>}
-    {notice&&<p className="detail-message">{notice}</p>}
+    <FeedbackMessage feedback={feedback} onClose={clearFeedback}/>
   </main>;
 }

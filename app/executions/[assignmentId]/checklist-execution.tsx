@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PrivateRouteGuard } from "../../private-route-guard";
 import { initializeSupabaseBrowserClient } from "../../../lib/supabase";
+import { FeedbackMessage, useFeedback } from "../../feedback";
 
 type Assignment = {
   id: string;
@@ -40,7 +41,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
   const [loading,setLoading] = useState(true);
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState("");
-  const [notice,setNotice] = useState("");
+  const { feedback, showFeedback, clearFeedback } = useFeedback();
   const [savingItems,setSavingItems] = useState<string[]>([]);
   const [photoUrls,setPhotoUrls] = useState<Record<string,string>>({});
   const actionLock = useRef(false);
@@ -142,7 +143,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
       .maybeSingle();
     if (existing) {
       setExecution(existing as Execution);
-      setNotice("Execução existente recuperada.");
+      showFeedback("Execução existente recuperada.");
       setBusy(false);
       actionLock.current = false;
       return;
@@ -157,7 +158,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
       created_by: userId,
     }).select("id,status,started_at,completed_at").single();
     if (startError) setError(startError.message);
-    else { setExecution(data as Execution); setNotice("Execução iniciada."); }
+    else { setExecution(data as Execution); showFeedback("Execução iniciada."); }
     setBusy(false);
     actionLock.current = false;
   };
@@ -175,7 +176,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     if (statusError || !data) setError(statusError?.message || "A alteração de status não foi persistida.");
     else {
       setExecution({...execution,status});
-      setNotice(status==="paused"?"Execução pausada. Suas respostas foram preservadas.":"Execução retomada.");
+      showFeedback(status==="paused"?"Execução pausada. Suas respostas foram preservadas.":"Execução retomada.");
     }
     setBusy(false);
     actionLock.current = false;
@@ -200,7 +201,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     if (answerError || !data) setError(answerError?.message || "A resposta não foi persistida. Tente novamente.");
     else {
       setAnswers(current=>({...current,[itemId]:value}));
-      setNotice("Resposta salva.");
+      showFeedback("Resposta salva.");
     }
     setSavingItems(current=>current.filter(id=>id!==itemId));
   };
@@ -214,7 +215,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     }
     setSavingItems(current=>[...current,item.id]);
     setError("");
-    setNotice("");
+    clearFeedback();
     const supabase = await initializeSupabaseBrowserClient();
     if (!supabase) {
       setSavingItems(current=>current.filter(id=>id!==item.id));
@@ -266,7 +267,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     else {
       setAnswers(current=>({...current,[item.id]:"Não"}));
       setNonConformityItems(current=>current.includes(item.id)?current:[...current,item.id]);
-      setNotice(existing?"Não conformidade atualizada.":"Não conformidade registrada automaticamente.");
+      showFeedback(existing?"Não conformidade atualizada.":"Não conformidade registrada automaticamente.");
     }
     setSavingItems(current=>current.filter(id=>id!==item.id));
   };
@@ -289,7 +290,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     }
     setSavingItems(current=>[...current,itemId]);
     setError("");
-    setNotice("");
+    clearFeedback();
     const supabase = await initializeSupabaseBrowserClient();
     if (!supabase) {
       setSavingItems(current=>current.filter(id=>id!==itemId));
@@ -340,7 +341,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     setAnswers(current=>({...current,[itemId]:storagePath}));
     if (signed?.signedUrl) setPhotoUrls(current=>({...current,[itemId]:signed.signedUrl}));
     setSavingItems(current=>current.filter(id=>id!==itemId));
-    setNotice("Fotografia salva e vinculada à execução.");
+    showFeedback("Fotografia salva e vinculada à execução.");
   };
 
   const finishExecution = async () => {
@@ -374,7 +375,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     if (completionError || !data) setError(completionError?.message || "A conclusão não foi persistida.");
     else {
       setExecution({...execution,status:"completed",completed_at:completedAt});
-      setNotice("Checklist finalizado com sucesso.");
+      showFeedback("Checklist finalizado com sucesso.");
     }
     setBusy(false);
     actionLock.current = false;
@@ -392,7 +393,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
           const nextValue=event.target.value;
           if (nextValue==="Não") {
             setAnswers(current=>({...current,[item.id]:"Não"}));
-            setNotice("");
+            clearFeedback();
           } else {
             void saveAnswer(item.id,nextValue,{isConforming:nextValue==="Sim"});
           }
@@ -405,7 +406,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
         </div>}
       </div>;
     }
-    if (item.answer_type==="rating") return <select value={String(value??"")} disabled={readOnly} onChange={event=>saveAnswer(item.id,Number(event.target.value))}><option value="">Selecione de 0 a 10</option>{Array.from({length:11},(_,index)=><option key={index} value={index}>{index}</option>)}</select>;
+    if (item.answer_type==="rating") return <select aria-label="Avaliação de 0 a 10" value={String(value??"")} disabled={readOnly} onChange={event=>{const nextValue=event.target.value; void saveAnswer(item.id,nextValue===""?null:Number(nextValue));}}><option value="">Selecione de 0 a 10</option>{Array.from({length:11},(_,index)=><option key={index} value={index}>{index}</option>)}</select>;
     if (item.answer_type==="single_select") {
       const options = Array.isArray(item.options) ? item.options.filter(option=>typeof option==="string") as string[] : [];
       return <select value={String(value??"")} disabled={readOnly} onChange={event=>saveAnswer(item.id,event.target.value)}><option value="">Selecione</option>{options.map(option=><option key={option} value={option}>{option}</option>)}</select>;
@@ -438,6 +439,6 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
       </>}
     </div>}
     {error&&assignment&&<p className="detail-message error">{error}</p>}
-    {notice&&<p className="detail-message">{notice}</p>}
+    <FeedbackMessage feedback={feedback} onClose={clearFeedback}/>
   </main>;
 }
