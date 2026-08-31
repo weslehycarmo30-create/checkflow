@@ -29,7 +29,7 @@ test("feedback supports manual close without changing the error persistence rule
 });
 
 test("execution CTA has reserved safe-area space below fixed feedback at mobile widths", () => {
-  assert.match(css, /finish-card\{text-align:center;margin-bottom:calc\(84px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(css, /finish-card\{text-align:center;margin-bottom:calc\(120px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(css, /@media\(max-width:600px\)\{\.execution-page\{padding:15px 12px calc\(15px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(css, /@media\(max-width:820px\)\{\.detail-message\{left:14px;right:14px;bottom:calc\(76px \+ env\(safe-area-inset-bottom\)\)/);
 });
