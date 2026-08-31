@@ -3,34 +3,35 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export type FeedbackKind = "success" | "error";
+export const SUCCESS_FEEDBACK_DURATION_MS = 3000;
+
+type FeedbackState = { id: number; message: string; kind: FeedbackKind };
 
 export function useFeedback() {
-  const [feedback, setFeedback] = useState<{ message: string; kind: FeedbackKind } | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [feedback, setFeedback] = useState<FeedbackState | null>(null);
+  const nextFeedbackId = useRef(0);
 
   const clearFeedback = useCallback(() => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = null;
     setFeedback(null);
   }, []);
 
   const showFeedback = useCallback((message: string, kind: FeedbackKind = "success") => {
-    if (timer.current) clearTimeout(timer.current);
-    setFeedback({ message, kind });
-    timer.current = kind === "success" ? setTimeout(() => {
-      timer.current = null;
-      setFeedback(null);
-    }, 3000) : null;
+    nextFeedbackId.current += 1;
+    setFeedback({ id: nextFeedbackId.current, message, kind });
   }, []);
 
-  useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
-  }, []);
+  useEffect(() => {
+    if (!feedback || feedback.kind !== "success") return;
+    const timer = window.setTimeout(() => {
+      setFeedback(current => current?.id === feedback.id ? null : current);
+    }, SUCCESS_FEEDBACK_DURATION_MS);
+    return () => window.clearTimeout(timer);
+  }, [feedback]);
 
   return { feedback, showFeedback, clearFeedback };
 }
 
-export function FeedbackMessage({ feedback, onClose }: { feedback: { message: string; kind: FeedbackKind } | null; onClose: () => void }) {
+export function FeedbackMessage({ feedback, onClose }: { feedback: FeedbackState | null; onClose: () => void }) {
   if (!feedback) return null;
   return <div className={`detail-message ${feedback.kind}`} role={feedback.kind === "error" ? "alert" : "status"} aria-live={feedback.kind === "error" ? "assertive" : "polite"}>
     <span>{feedback.message}</span>
