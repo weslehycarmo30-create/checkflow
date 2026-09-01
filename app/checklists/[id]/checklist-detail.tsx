@@ -27,6 +27,7 @@ type Assignment = {
   collaborator_name: string;
   unit_name: string | null;
 };
+type AssignmentExecution = { assignment_id: string; status: "pending" | "in_progress" | "paused" | "completed" | "cancelled" };
 
 export default function ChecklistDetail({ checklistId }: { checklistId: string }) {
   const [checklist,setChecklist] = useState<Checklist | null>(null);
@@ -225,15 +226,34 @@ showFeedback("Item adicionado.");
       .order("created_at");
     if (existingError) { setError(existingError.message); endAction(); return; }
     let assignmentError = null;
+    let reusedAssignment = false;
     if (existing && existing.length > 0) {
-      const { error: updateError } = await supabase.from("checklist_assignments").update(assignmentValues).eq("id", existing[0].id);
-      assignmentError = updateError;
-      if (!assignmentError && existing.length > 1) {
-        const duplicateIds = existing.slice(1).map(value=>value.id);
-        const { error: cleanupError } = await supabase.from("checklist_assignments").update({ active: false }).in("id", duplicateIds);
-        assignmentError = cleanupError;
+      const existingIds = existing.map(value=>value.id);
+      const { data: executionRows, error: executionLookupError } = await supabase.from("checklist_executions")
+        .select("assignment_id,status")
+        .in("assignment_id", existingIds)
+        .order("created_at", { ascending: false });
+      if (executionLookupError) {
+        setError(executionLookupError.message);
+        endAction();
+        return;
       }
-    } else {
+      const executionsByAssignment = new Map<string,AssignmentExecution[]>();
+      for (const execution of (executionRows || []) as AssignmentExecution[]) {
+        const current = executionsByAssignment.get(execution.assignment_id) || [];
+        executionsByAssignment.set(execution.assignment_id, [...current, execution]);
+      }
+      const reusableAssignment = existing.find(candidate => {
+        const executions = executionsByAssignment.get(candidate.id) || [];
+        return executions.length === 0 || executions.some(execution => execution.status === "in_progress" || execution.status === "paused");
+      });
+      if (reusableAssignment) {
+        const { error: updateError } = await supabase.from("checklist_assignments").update(assignmentValues).eq("id", reusableAssignment.id);
+        assignmentError = updateError;
+        reusedAssignment = !assignmentError;
+      }
+    }
+    if (!existing?.length || (!reusedAssignment && !assignmentError)) {
       const { error: insertError } = await supabase.from("checklist_assignments").insert({
         organization_id: checklist.organization_id, checklist_id: checklist.id, assigned_to: assignedTo,
         ...assignmentValues, created_by: userId,
@@ -241,7 +261,7 @@ showFeedback("Item adicionado.");
       assignmentError = insertError;
     }
     if (assignmentError) { setError(assignmentError.message); endAction(); return; }
-showFeedback(existing?.length ? "Atribuição atualizada sem duplicidade." : "Checklist atribuído com sucesso.");
+showFeedback(reusedAssignment ? "Atribuição atualizada." : existing?.length ? "Nova atribuição criada." : "Checklist atribuído com sucesso.");
     setAssignedTo(""); setUnitId(""); setDueAt("");
     await load();
     endAction();
