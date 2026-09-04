@@ -26,7 +26,7 @@ test("execution waits for persistence and blocks duplicate critical actions", ()
 test("photo evidence uses the private organization path and persists metadata", () => {
   assert.match(execution, /checkflow-evidence/);
   assert.match(execution, /\$\{assignment\.organization_id\}\/\$\{execution\.id\}\/\$\{itemId\}/);
-  assert.match(execution, /\.from\("attachments"\)\.insert/);
+  assert.match(execution, /\.rpc\("record_checkflow_execution_photo_evidence"/);
   assert.match(execution, /file\.size > 10 \* 1024 \* 1024/);
   assert.match(execution, /image\/jpeg/);
   assert.match(execution, /createSignedUrl/);

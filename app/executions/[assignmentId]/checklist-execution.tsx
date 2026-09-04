@@ -308,33 +308,20 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
       setError(uploadError.message || "Não foi possível enviar a fotografia.");
       return;
     }
-    const { data: answer, error: answerError } = await supabase.from("execution_answers").upsert({
-      organization_id:assignment.organization_id,
-      execution_id:execution.id,
-      item_id:itemId,
-      value:storagePath,
-      answered_at:new Date().toISOString(),
-      created_by:userId,
-    },{onConflict:"execution_id,item_id"}).select("id").single();
-    if (answerError || !answer) {
-      await supabase.storage.from("checkflow-evidence").remove([storagePath]);
-      setSavingItems(current=>current.filter(id=>id!==itemId));
-      setError(answerError?.message || "A fotografia foi enviada, mas a resposta não foi vinculada.");
-      return;
-    }
-    const { error: attachmentError } = await supabase.from("attachments").insert({
-      organization_id:assignment.organization_id,
-      execution_id:execution.id,
-      answer_id:answer.id,
-      storage_path:storagePath,
-      file_name:file.name,
-      mime_type:file.type,
-      size_bytes:file.size,
-      created_by:userId,
+    const { error: recordError } = await supabase.rpc("record_checkflow_execution_photo_evidence", {
+      p_execution_id: execution.id,
+      p_item_id: itemId,
+      p_storage_path: storagePath,
+      p_file_name: file.name,
+      p_mime_type: file.type,
+      p_size_bytes: file.size,
     });
-    if (attachmentError) {
+    if (recordError) {
+      const { error: cleanupError } = await supabase.storage.from("checkflow-evidence").remove([storagePath]);
       setSavingItems(current=>current.filter(id=>id!==itemId));
-      setError(`A fotografia foi salva, mas o registro da evidência falhou: ${attachmentError.message}`);
+      setError(cleanupError
+        ? `A fotografia não foi vinculada (${recordError.message}). A limpeza automática falhou; informe o caminho ${storagePath} ao suporte.`
+        : recordError.message || "A fotografia foi enviada, mas não foi vinculada à execução.");
       return;
     }
     const { data:signed } = await supabase.storage.from("checkflow-evidence").createSignedUrl(storagePath,3600);

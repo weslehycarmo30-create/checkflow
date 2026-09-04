@@ -137,18 +137,8 @@ export default function ActionPlans() {
     if (planError || !plan) {
       setError(planError?.message || "O plano não foi persistido.");
     } else {
-      const {error:occurrenceUpdateError}=await supabase.from("non_conformities").update({
-        responsible_user_id:responsibleId,
-        due_at:new Date(dueAt).toISOString(),
-        status:"in_progress",
-      }).eq("id",occurrence.id).select("id").single();
-      if (occurrenceUpdateError) {
-        await supabase.from("action_plans").delete().eq("id",plan.id);
-        setError(occurrenceUpdateError.message);
-      } else {
-        showFeedback("Plano de ação criado e atribuído.");
-        await load();
-      }
+      showFeedback("Plano de ação criado e atribuído.");
+      await load();
     }
     actionLock.current=false; setBusyId("");
   };
@@ -193,11 +183,7 @@ export default function ActionPlans() {
       validated_at:new Date().toISOString(),
     }).eq("id",plan.id).select("id").single();
     if (planError) setError(planError.message);
-    else {
-      const {error:occurrenceError}=await supabase.from("non_conformities").update({status}).eq("id",plan.non_conformity_id).select("id").single();
-      if (occurrenceError) setError(occurrenceError.message);
-      else { showFeedback(approved?"Correção aprovada.":"Correção reprovada."); await load(); }
-    }
+    else { showFeedback(approved?"Correção aprovada.":"Correção reprovada."); await load(); }
     actionLock.current=false; setBusyId("");
   };
 
