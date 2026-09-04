@@ -4,6 +4,12 @@
 
 begin;
 
+-- The disposable local database does not preload PostgREST table grants.
+-- Keep these grants transaction-local so the test exercises RLS plus the
+-- domain triggers without leaving privileges behind.
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on all tables in schema public to authenticated;
+
 do $$
 begin
   if to_regprocedure('public.build_execution_snapshot(public.checklist_executions)') is null then
@@ -36,7 +42,7 @@ values
   ('10000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000d1', 'owner', true, '00000000-0000-0000-0000-0000000000d1');
 
 insert into public.checklists (id, organization_id, name, description, category, status, responsible_user_id, created_by)
-values ('20000000-0000-0000-0000-0000000000c1', '10000000-0000-0000-0000-0000000000c1', 'Abertura original', 'Conteúdo original', 'Bar', 'active', '00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-0000000000c2');
+values ('20000000-0000-0000-0000-0000000000c1', '10000000-0000-0000-0000-0000000000c1', 'Abertura original', 'Conteúdo original', 'Bar', 'draft', '00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-0000000000c2');
 insert into public.checklist_sections (id, organization_id, checklist_id, title, position, created_by)
 values
   ('30000000-0000-0000-0000-0000000000c1', '10000000-0000-0000-0000-0000000000c1', '20000000-0000-0000-0000-0000000000c1', 'Preparação', 10, '00000000-0000-0000-0000-0000000000c2'),
@@ -76,13 +82,21 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000c2
 insert into public.action_plans (id, organization_id, non_conformity_id, description, responsible_user_id, due_at, created_by)
 values ('90000000-0000-0000-0000-0000000000c1', '10000000-0000-0000-0000-0000000000c1', '80000000-0000-0000-0000-0000000000c1', 'Refrigerar imediatamente', '00000000-0000-0000-0000-0000000000c2', now() + interval '3 days', '00000000-0000-0000-0000-0000000000c2');
 
--- Source changes are permitted, but must not rewrite what was executed.
-update public.checklists set name='Checklist alterado', description='Conteúdo alterado', category='Outro', status='archived' where id='20000000-0000-0000-0000-0000000000c1';
-update public.checklist_sections set title='Ordem alterada', position=99 where id='30000000-0000-0000-0000-0000000000c1';
-update public.checklist_items set prompt='Pergunta alterada', position=99 where id='40000000-0000-0000-0000-0000000000c2';
-insert into public.checklist_items (id, organization_id, section_id, prompt, answer_type, position, created_by)
-values ('40000000-0000-0000-0000-0000000000c4', '10000000-0000-0000-0000-0000000000c1', '30000000-0000-0000-0000-0000000000c2', 'Item novo', 'short_text', 1, '00000000-0000-0000-0000-0000000000c2');
-delete from public.checklist_items where id='40000000-0000-0000-0000-0000000000c3';
+-- Source changes are rejected after assignment/execution and must not rewrite what was executed.
+do $$
+begin
+  begin update public.checklists set name='Checklist alterado', description='Conteúdo alterado', category='Outro', status='archived' where id='20000000-0000-0000-0000-0000000000c1'; raise exception 'protected checklist update was accepted';
+  exception when raise_exception then if sqlerrm='protected checklist update was accepted' then raise; end if; end;
+  begin update public.checklist_sections set title='Ordem alterada', position=99 where id='30000000-0000-0000-0000-0000000000c1'; raise exception 'protected section update was accepted';
+  exception when raise_exception then if sqlerrm='protected section update was accepted' then raise; end if; end;
+  begin update public.checklist_items set prompt='Pergunta alterada', position=99 where id='40000000-0000-0000-0000-0000000000c2'; raise exception 'protected item update was accepted';
+  exception when raise_exception then if sqlerrm='protected item update was accepted' then raise; end if; end;
+  begin insert into public.checklist_items (id, organization_id, section_id, prompt, answer_type, position, created_by)
+    values ('40000000-0000-0000-0000-0000000000c4', '10000000-0000-0000-0000-0000000000c1', '30000000-0000-0000-0000-0000000000c2', 'Item novo', 'short_text', 1, '00000000-0000-0000-0000-0000000000c2'); raise exception 'protected item insert was accepted';
+  exception when raise_exception then if sqlerrm='protected item insert was accepted' then raise; end if; end;
+  begin delete from public.checklist_items where id='40000000-0000-0000-0000-0000000000c3'; raise exception 'protected item delete was accepted';
+  exception when raise_exception then if sqlerrm='protected item delete was accepted' then raise; end if; end;
+end $$;
 do $$ begin
   if (select execution_snapshot #>> '{checklist,name}' from public.checklist_executions where id='60000000-0000-0000-0000-0000000000c1') <> 'Abertura original' then raise exception 'source rename rewrote snapshot'; end if;
   if jsonb_path_exists((select execution_snapshot from public.checklist_executions where id='60000000-0000-0000-0000-0000000000c1'), '$.sections[*].items[*] ? (@.prompt == "Pergunta alterada" || @.prompt == "Item novo")') then raise exception 'source item mutation rewrote snapshot'; end if;

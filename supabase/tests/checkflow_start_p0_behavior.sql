@@ -6,6 +6,12 @@
 
 begin;
 
+-- The disposable local database does not preload PostgREST table grants.
+-- Keep these grants transaction-local so the test exercises RLS plus the
+-- existing P0 policies without leaving privileges behind.
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on all tables in schema public to authenticated;
+
 do $$
 begin
   if to_regclass('public.organization_members') is null
@@ -41,7 +47,7 @@ values
   ('10000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000b1', 'owner', true, '00000000-0000-0000-0000-0000000000b1');
 
 insert into public.checklists (id, organization_id, name, status, created_by)
-values ('20000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-0000000000a1', 'Checklist A', 'active', '00000000-0000-0000-0000-0000000000a1');
+values ('20000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-0000000000a1', 'Checklist A', 'draft', '00000000-0000-0000-0000-0000000000a1');
 insert into public.checklist_sections (id, organization_id, checklist_id, title, created_by)
 values ('30000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-0000000000a1', '20000000-0000-0000-0000-0000000000a1', 'Seção A', '00000000-0000-0000-0000-0000000000a1');
 insert into public.checklist_items (id, organization_id, section_id, prompt, answer_type, created_by)
