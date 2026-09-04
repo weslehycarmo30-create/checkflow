@@ -164,7 +164,10 @@ begin
   begin update public.checklist_sections set position=99 where id='30000000-0000-0000-0000-000000000101'; raise exception 'execution protected section update was accepted';
   exception when raise_exception then if sqlerrm='execution protected section update was accepted' then raise; end if; end;
 end $$;
-update public.checklist_executions set status='completed', completed_at=now() where id='60000000-0000-0000-0000-000000000101';
+-- P1-03 requires a terminal execution to carry coherent completion metadata.
+update public.checklist_executions
+set status='completed', completed_at=now(), conformity_percentage=100, summary='{}'::jsonb
+where id='60000000-0000-0000-0000-000000000101';
 
 do $$
 declare affected integer;
