@@ -161,8 +161,9 @@ export default function ActionPlans() {
         status:"awaiting_validation",
       }).eq("id",plan.id).select("id").single();
       if (updateError) {
-        await supabase.storage.from("checkflow-evidence").remove([storagePath]);
-        setError(updateError.message);
+        // Preserve the upload: a failed response does not prove that the link
+        // failed to commit. Cleanup runs only in a quiesced operator window.
+        setError(`${updateError.message} A fotografia enviada foi preservada. Atualize a página antes de tentar novamente.`);
       } else {
         showFeedback("Correção enviada para validação do gestor.");
         await load();

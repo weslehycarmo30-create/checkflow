@@ -39,18 +39,22 @@ do $$ begin
   end;
 end $$;
 
+insert into storage.objects(bucket_id,name,owner_id,metadata) values ('checkflow-evidence','10000000-0000-0000-0000-000000000941/action-plans/90000000-0000-0000-0000-000000000941/photo.jpg','00000000-0000-0000-0000-000000000942','{}');
 update public.action_plans set correction_comment='10000000-0000-0000-0000-000000000941/action-plans/90000000-0000-0000-0000-000000000941/photo.jpg', status='awaiting_validation' where id='90000000-0000-0000-0000-000000000941';
 update public.action_plans set status='completed', validated_by='00000000-0000-0000-0000-000000000942', validated_at=now() where id='90000000-0000-0000-0000-000000000941';
 do $$ begin if (select status from public.non_conformities where id='80000000-0000-0000-0000-000000000941') <> 'completed' then raise exception 'plan validation did not atomically synchronize occurrence'; end if; end $$;
 
 -- The RPC commits answer+attachment together and retry with the same path is idempotent.
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000943',true);
+insert into storage.objects(bucket_id,name,owner_id,metadata) values ('checkflow-evidence','10000000-0000-0000-0000-000000000941/60000000-0000-0000-0000-000000000941/40000000-0000-0000-0000-000000000941/photo.jpg','00000000-0000-0000-0000-000000000943','{}');
+insert into storage.objects(bucket_id,name,owner_id,metadata) values ('checkflow-evidence','10000000-0000-0000-0000-000000000941/60000000-0000-0000-0000-000000000941/40000000-0000-0000-0000-000000000941/retry-new-path.jpg','00000000-0000-0000-0000-000000000943','{}');
+insert into storage.objects(bucket_id,name,owner_id,metadata) values ('checkflow-evidence','10000000-0000-0000-0000-000000000941/60000000-0000-0000-0000-000000000941/40000000-0000-0000-0000-000000000942/fail.jpg','00000000-0000-0000-0000-000000000943','{}');
 select public.record_checkflow_execution_photo_evidence('60000000-0000-0000-0000-000000000941','40000000-0000-0000-0000-000000000941','10000000-0000-0000-0000-000000000941/60000000-0000-0000-0000-000000000941/40000000-0000-0000-0000-000000000941/photo.jpg','photo.jpg','image/jpeg',10);
 select public.record_checkflow_execution_photo_evidence('60000000-0000-0000-0000-000000000941','40000000-0000-0000-0000-000000000941','10000000-0000-0000-0000-000000000941/60000000-0000-0000-0000-000000000941/40000000-0000-0000-0000-000000000941/photo.jpg','photo.jpg','image/jpeg',10);
 do $$ begin if (select count(*) from public.attachments where execution_id='60000000-0000-0000-0000-000000000941') <> 1 then raise exception 'photo retry created duplicate attachment'; end if; end $$;
 
 -- A browser retry may generate a new storage path. The database must reject
--- the second attachment so the client can compensate by deleting that object.
+-- the second attachment. The residual object is retained for operator cleanup.
 do $$ begin
   begin
     perform public.record_checkflow_execution_photo_evidence('60000000-0000-0000-0000-000000000941','40000000-0000-0000-0000-000000000941','10000000-0000-0000-0000-000000000941/60000000-0000-0000-0000-000000000941/40000000-0000-0000-0000-000000000941/retry-new-path.jpg','retry-new-path.jpg','image/jpeg',10);
@@ -60,8 +64,7 @@ do $$ begin
 end $$;
 do $$ begin if (select count(*) from public.attachments where execution_id='60000000-0000-0000-0000-000000000941') <> 1 then raise exception 'new-path retry created duplicate attachment'; end if; end $$;
 
--- The executor can compensate only an unlinked upload. Once linked, Storage RLS
--- keeps the evidence object immutable even for its uploader.
+-- All client deletion is denied; orphan cleanup requires a quiesced operator window.
 insert into storage.objects (bucket_id,name,owner_id,metadata)
 values ('checkflow-evidence','10000000-0000-0000-0000-000000000941/60000000-0000-0000-0000-000000000941/40000000-0000-0000-0000-000000000941/unlinked-retry.jpg','00000000-0000-0000-0000-000000000943','{}'::jsonb);
 -- Storage API sets this transaction-local guard before its DELETE. The test
@@ -70,10 +73,9 @@ select set_config('storage.allow_delete_query','true',true);
 delete from storage.objects
 where bucket_id='checkflow-evidence'
   and name='10000000-0000-0000-0000-000000000941/60000000-0000-0000-0000-000000000941/40000000-0000-0000-0000-000000000941/unlinked-retry.jpg';
-do $$ begin if exists (select 1 from storage.objects where bucket_id='checkflow-evidence' and name like '%/unlinked-retry.jpg') then raise exception 'unlinked upload compensation was blocked'; end if; end $$;
+do $$ begin if not exists (select 1 from storage.objects where bucket_id='checkflow-evidence' and name like '%/unlinked-retry.jpg') then raise exception 'client deleted an upload'; end if; end $$;
 
-insert into storage.objects (bucket_id,name,owner_id,metadata)
-values ('checkflow-evidence','10000000-0000-0000-0000-000000000941/60000000-0000-0000-0000-000000000941/40000000-0000-0000-0000-000000000941/photo.jpg','00000000-0000-0000-0000-000000000943','{}'::jsonb);
+-- Linked object was uploaded before the RPC.
 do $$
 declare affected integer;
 begin
@@ -90,7 +92,7 @@ create trigger p1_04_test_attachment_failure before insert on public.attachments
 set local role authenticated;
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000943',true);
 do $$ begin
-  begin perform public.record_checkflow_execution_photo_evidence('60000000-0000-0000-0000-000000000941','40000000-0000-0000-0000-000000000942','10000000-0000-0000-0000-000000000941/60000000-0000-0000-0000-000000000941/40000000-0000-0000-0000-000000000942/fail.jpg','fail.jpg','image/jpeg',10); raise exception 'injected attachment failure was accepted'; exception when raise_exception then if sqlerrm='injected attachment failure was accepted' then raise; end if; end;
+  begin perform public.record_checkflow_execution_photo_evidence('60000000-0000-0000-0000-000000000941','40000000-0000-0000-0000-000000000942','10000000-0000-0000-0000-000000000941/60000000-0000-0000-0000-000000000941/40000000-0000-0000-0000-000000000942/fail.jpg','fail.jpg','image/jpeg',10); raise exception 'injected attachment failure was accepted'; exception when raise_exception then if sqlerrm<>'injected attachment failure' then raise; end if; end;
 end $$;
 reset role;
 do $$ begin if exists (select 1 from public.execution_answers where execution_id='60000000-0000-0000-0000-000000000941' and item_id='40000000-0000-0000-0000-000000000942') then raise exception 'attachment failure left a partial answer'; end if; end $$;

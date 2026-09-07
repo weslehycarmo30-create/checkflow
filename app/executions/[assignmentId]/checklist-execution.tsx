@@ -222,47 +222,12 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
       setError("Supabase não configurado.");
       return;
     }
-    const { data:answer,error:answerError } = await supabase.from("execution_answers").upsert({
-      organization_id:assignment.organization_id,
-      execution_id:execution.id,
-      item_id:item.id,
-      value:"Não",
-      observation,
-      is_conforming:false,
-      answered_at:new Date().toISOString(),
-      created_by:userId,
-    },{onConflict:"execution_id,item_id"}).select("id").single();
-    if (answerError || !answer) {
-      setSavingItems(current=>current.filter(id=>id!==item.id));
-      setError(answerError?.message || "A resposta não conforme não foi persistida.");
-      return;
-    }
-    const { data:existing,error:lookupError } = await supabase.from("non_conformities")
-      .select("id")
-      .eq("execution_id",execution.id)
-      .eq("item_id",item.id)
-      .limit(1)
-      .maybeSingle();
-    if (lookupError) {
-      setSavingItems(current=>current.filter(id=>id!==item.id));
-      setError(lookupError.message);
-      return;
-    }
-    const occurrenceOperation = existing
-      ? supabase.from("non_conformities").update({observation,answer_id:answer.id}).eq("id",existing.id).select("id").single()
-      : supabase.from("non_conformities").insert({
-          organization_id:assignment.organization_id,
-          execution_id:execution.id,
-          answer_id:answer.id,
-          item_id:item.id,
-          unit_id:assignment.unit_id,
-          executor_id:userId,
-          observation,
-          priority:"medium",
-          status:"open",
-          created_by:userId,
-        }).select("id").single();
-    const { error:occurrenceError } = await occurrenceOperation;
+    const existing = nonConformityItems.includes(item.id);
+    const { error:occurrenceError } = await supabase.rpc("record_checkflow_non_conformity", {
+      p_execution_id: execution.id,
+      p_item_id: item.id,
+      p_observation: observation,
+    });
     if (occurrenceError) setError(occurrenceError.message || "A ocorrência não foi registrada.");
     else {
       setAnswers(current=>({...current,[item.id]:"Não"}));
@@ -317,11 +282,9 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
       p_size_bytes: file.size,
     });
     if (recordError) {
-      const { error: cleanupError } = await supabase.storage.from("checkflow-evidence").remove([storagePath]);
       setSavingItems(current=>current.filter(id=>id!==itemId));
-      setError(cleanupError
-        ? `A fotografia não foi vinculada (${recordError.message}). A limpeza automática falhou; informe o caminho ${storagePath} ao suporte.`
-        : recordError.message || "A fotografia foi enviada, mas não foi vinculada à execução.");
+      // Preserve uploads even after a lost RPC response: the link may exist.
+      setError(`${recordError.message} A fotografia enviada foi preservada. Atualize a página antes de tentar novamente.`);
       return;
     }
     const { data:signed } = await supabase.storage.from("checkflow-evidence").createSignedUrl(storagePath,3600);

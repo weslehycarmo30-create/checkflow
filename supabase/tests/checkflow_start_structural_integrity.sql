@@ -165,6 +165,9 @@ begin
   exception when raise_exception then if sqlerrm='execution protected section update was accepted' then raise; end if; end;
 end $$;
 -- P1-03 requires a terminal execution to carry coherent completion metadata.
+-- Completion also validates persisted required answers (202609070002).
+insert into public.execution_answers(organization_id,execution_id,item_id,value,created_by)
+values('10000000-0000-0000-0000-000000000101','60000000-0000-0000-0000-000000000101','40000000-0000-0000-0000-000000000101','true','00000000-0000-0000-0000-000000000103');
 update public.checklist_executions
 set status='completed', completed_at=now(), conformity_percentage=100, summary='{}'::jsonb
 where id='60000000-0000-0000-0000-000000000101';
