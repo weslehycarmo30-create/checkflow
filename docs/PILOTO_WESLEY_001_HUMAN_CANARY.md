@@ -1,8 +1,8 @@
 # CheckFlow — human canary Wesley 001
 
-Tempo alvo: 15–20 minutos. Use um celular, uma conta owner/manager e uma conta collaborator. Registre `PASS` ou `FAIL` em cada linha; pare e preserve capturas de tela se um resultado divergir.
+Tempo alvo: 15–20 minutos. Use um celular, uma conta owner/manager e uma conta collaborator. Registre `PASS` ou `FAIL` e uma evidência (captura, horário, rota e IDs) em cada linha; pare e preserve capturas de tela se um resultado divergir. Não use dados pessoais reais nem apague evidências durante a investigação.
 
-| # | AÇÃO | RESULTADO ESPERADO | PASS/FAIL |
+| # | AÇÃO | RESULTADO ESPERADO | PASS/FAIL | EVIDÊNCIA |
 | --- | --- | --- | --- |
 | 1 | Entre como owner e confirme o e-mail se o provedor solicitar. | Painel da organização aparece; não há erro de sessão. | |
 | 2 | Crie um checklist de abertura do bar, com uma seção e dois itens obrigatórios (um “Sim ou não” e uma foto). | O checklist aparece como rascunho e cada inclusão confirma salvamento. | |
@@ -17,4 +17,4 @@ Tempo alvo: 15–20 minutos. Use um celular, uma conta owner/manager e uma conta
 | 11 | Atribua o mesmo checklist novamente ao collaborator e inicie o novo ciclo. | É uma nova execução, com progresso `0%` e sem respostas do ciclo anterior. | |
 | 12 | Saia, entre novamente e confira histórico/plano. | Dados persistem; sessão anterior não reaparece após logout. | |
 
-Critério de interrupção: falha de isolamento entre empresas, edição estrutural por collaborator, perda de resposta após recarregar, conclusão sem obrigatórios, ou duplicação de ciclo/NC/plano. Não contorne o problema manualmente; registre horário, usuário, rota e captura.
+Critério de interrupção: falha de isolamento entre empresas, edição estrutural por collaborator, perda de resposta após recarregar, conclusão sem obrigatórios, ou duplicação de ciclo/NC/plano. Não contorne o problema manualmente; registre horário, usuário, rota, IDs, captura e o texto literal do erro. Antes de prosseguir, classifique o incidente no playbook do Piloto 001.
