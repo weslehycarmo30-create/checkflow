@@ -53,6 +53,22 @@ Revisão estrutural 360/390/412: CTA finalizar em largura total e margem safe-ar
 - `PILOTO_001_TEST_COVERAGE_MATRIX.md`
 - `pilot-templates/` com cinco checklists manuais para bar/evento.
 
+## Regressão final
+
+| Gate | Resultado |
+| --- | --- |
+| Node | 44/44 PASS |
+| SQL local | 8/8 PASS |
+| Adversarial local | 6/6 PASS |
+| Concurrency local | 12/12 PASS |
+| TypeScript | PASS |
+| Build | PASS |
+| Lint | PASS: 0 erros, 7 avisos conhecidos |
+| `git diff --check` | PASS |
+| Runtime audit | PASS: 0 vulnerabilidades |
+| Release gate | PASS |
+| Rollout precheck | PASS, local only |
+
 ## Veredito
 
 **B — READY WITH NON-BLOCKING GAPS.** A correção reforça caminhos operacionais reais e a documentação/cobertura cresceu sem mascarar E2E browser bloqueado. Remote access: **BLOCKED**. Remote write: **ZERO**.
