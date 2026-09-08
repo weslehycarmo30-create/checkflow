@@ -6,9 +6,9 @@ Escopo: revisão local e preparação do piloto. O remoto não foi acessado, alt
 ## HEAD inicial e final
 
 - HEAD inicial: `729ea36e276c660c391251ae01a718d64382b014`
-- HEAD final: `d9d6eb2bc28f92c33bd7652b02e6e705ff2dce68`
+- HEAD final no checkpoint de readiness: `1bfc764951bdb92e234868766e35cfc694e30eea`
 - `origin/main`: `68852bd55ff67bda30da1bd40df02a61559d7d32`
-- Commits locais criados: `1b57add test: fail fast for incomplete local supabase platform`; `d9d6eb2 docs: add Wesley 001 pilot canary readiness`
+- Commits locais criados: `1b57add test: fail fast for incomplete local supabase platform`; `d9d6eb2 docs: add Wesley 001 pilot canary readiness`; `1bfc764 docs: record local readiness handoff`
 
 As oito migrations congeladas permanecem inalteradas, com os hashes SHA-256 registrados no checkpoint anterior: `202609030001` `4DE232E3…BFB678A`; `202609040001` `062A99DA…0D436`; `202609040002` `B9AEDD80…77EC`; `202609040003` `5550BBA4…4F9D`; `202609070001` `3537EA68…FD233`; `202609070002` `56A75CDD…503B`; `202609070003` `B0124147…4A9E`; `202609070004` `B67BB69D…C65E`.
 
@@ -17,7 +17,7 @@ As oito migrations congeladas permanecem inalteradas, com os hashes SHA-256 regi
 | Classe | Achados | Situação |
 | --- | --- | --- |
 | P0 | 0 conhecidos localmente | Nenhum encontrado nesta revisão estática/testes Node. |
-| P1 | 0 conhecidos localmente | Validação SQL/E2E real ainda depende de stack local íntegra e rollout remoto. |
+| P1 | 0 conhecidos localmente | SQL, adversarial e concorrência passaram localmente; E2E browser e rollout remoto seguem pendentes. |
 | P2 | 1 | Harness SQL falhava tarde quando Auth/Storage local estava incompleto; corrigido em `1b57add`. |
 | P3 | 1 | Aviso de compatibilidade futura do Vite sobre imports no config; sem impacto funcional atual, não alterado. |
 
@@ -27,16 +27,16 @@ Fluxos revisados: cadastro/confirmação, login/logout/recuperação, organizaç
 
 - Corrigido: `scripts/sql-local-gates.mjs` agora verifica `auth.users`, `storage.buckets` e `storage.objects` antes de criar um banco gate. Sem isso, uma stack local incompleta chegava às migrations e reportava incorretamente uma falha de produto em `storage.buckets`.
 - Teste adicionado: `tests/sql-local-gates-harness.test.mjs`, cobrindo a ordem fail-fast e as três dependências.
-- Não corrigido: a stack Docker local atualmente selecionada não disponibiliza `storage.buckets`; é bloqueio de ambiente local, não foi mascarado.
+- Não corrigido: nenhum defeito P0/P1/P2 de produto reproduzido nesta rodada. A primeira tentativa encontrou a stack local ainda iniciando; o retry em stack saudável passou integralmente.
 
 ## Resultados objetivos
 
 | Gate | Resultado |
 | --- | --- |
 | Node | 37/37 PASS |
-| SQL | 0/8 executados — BLOCKED por plataforma local sem Storage |
-| Adversarial | 0/6 executados — BLOCKED pela mesma plataforma local |
-| Concurrency | 0/12 executados — BLOCKED pela mesma plataforma local |
+| SQL | 8/8 PASS |
+| Adversarial | 6/6 PASS |
+| Concurrency | 12/12 PASS |
 | E2E browser | 0/29 executados nesta missão — requer stack local HTTP/Auth íntegra; suite e fixture já existem |
 | TypeScript | PASS (`npx tsc --noEmit`) |
 | Build | PASS (`npm test` executa build verificado) |
@@ -66,6 +66,6 @@ Fluxos revisados: cadastro/confirmação, login/logout/recuperação, organizaç
 
 ## Estado
 
-**READY LOCALLY** para gates Node, build, TypeScript, lint e canary documentado.
+**READY LOCALLY** para gates Node, SQL, adversarial, concorrência, build, TypeScript, lint e canary documentado. E2E browser completo ainda requer execução contra stack HTTP/Auth local preparada.
 
 **REMOTE MIGRATIONS PENDING**. Não declarar o piloto pronto antes de `db push` oficial, postflight remoto e human canary completos.
