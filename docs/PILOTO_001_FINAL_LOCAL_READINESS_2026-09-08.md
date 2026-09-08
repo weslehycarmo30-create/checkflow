@@ -56,6 +56,14 @@ Fluxos revisados: cadastro/confirmação, login/logout/recuperação, organizaç
 - Canary: roteiro criado em `docs/PILOTO_WESLEY_001_HUMAN_CANARY.md`; pendente execução humana.
 - Pilot status: não pronto para declaração final. Depende de migrations remotas, postflight e human canary aprovados.
 
+## Tentativa de E2E browser local — 2026-09-08
+
+- Criada configuração local oficial `supabase/config.toml`, com portas isoladas `55420`–`55429`; não contém URL, chave ou credencial remota.
+- A CLI iniciou o banco local e reaplicou as migrations do workspace. A fixture existente já fornece ORG A/ORG B, owner, manager e collaborators sintéticos.
+- O bootstrap termina durante `Initialising schema`/Storage e remove os containers `supabase_*_checkflow`; por isso não há API/Auth local CheckFlow disponível para iniciar o Vinext e o Playwright.
+- A porta `54321` já atende uma stack Docker de outro projeto e foi explicitamente descartada: não é um ambiente válido para CheckFlow e não foi usada no E2E.
+- Resultado honesto: E2E browser e E2E mobile continuam **NOT TESTED** nesta rodada. Não foram usados mocks para simular Auth, RLS, Storage ou respostas do banco.
+
 ## Arquivos alterados nesta missão
 
 - `scripts/sql-local-gates.mjs`
