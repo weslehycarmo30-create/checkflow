@@ -1,0 +1,1 @@
+{"rows":[{"report":"04_function_guard_checkflow_record_identity","status":"FAIL","count_or_value":"missing"},{"report":"06_duplicate_executions_per_assignment","status":"FAIL","count_or_value":"1"},{"report":"07_legacy_snapshot_preserved","status":"PASS","count_or_value":"legacy=5; all_snapshot_violations=5"}]}

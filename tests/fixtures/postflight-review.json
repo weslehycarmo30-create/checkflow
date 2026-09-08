@@ -1,0 +1,1 @@
+{"rows":[{"report":"01_migration_202609070004","status":"PASS","count_or_value":"recorded"},{"report":"07_legacy_snapshot_preserved","status":"PASS","count_or_value":"legacy=6; all_snapshot_violations=6"},{"report":"08_unexpected_operator_finding","status":"REVIEW","count_or_value":"manual investigation"}]}
