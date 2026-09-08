@@ -6,9 +6,9 @@ Escopo: revisão local e preparação do piloto. O remoto não foi acessado, alt
 ## HEAD inicial e final
 
 - HEAD inicial: `729ea36e276c660c391251ae01a718d64382b014`
-- HEAD final: `1b57add` (antes do commit desta documentação)
+- HEAD final: `d9d6eb2bc28f92c33bd7652b02e6e705ff2dce68`
 - `origin/main`: `68852bd55ff67bda30da1bd40df02a61559d7d32`
-- Commits locais criados: `1b57add test: fail fast for incomplete local supabase platform`
+- Commits locais criados: `1b57add test: fail fast for incomplete local supabase platform`; `d9d6eb2 docs: add Wesley 001 pilot canary readiness`
 
 As oito migrations congeladas permanecem inalteradas, com os hashes SHA-256 registrados no checkpoint anterior: `202609030001` `4DE232E3…BFB678A`; `202609040001` `062A99DA…0D436`; `202609040002` `B9AEDD80…77EC`; `202609040003` `5550BBA4…4F9D`; `202609070001` `3537EA68…FD233`; `202609070002` `56A75CDD…503B`; `202609070003` `B0124147…4A9E`; `202609070004` `B67BB69D…C65E`.
 
