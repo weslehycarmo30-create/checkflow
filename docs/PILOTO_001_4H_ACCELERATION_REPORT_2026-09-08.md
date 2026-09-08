@@ -31,8 +31,8 @@
 | TypeScript | PASS |
 | Build | PASS no checkpoint local anterior; nenhuma fonte de build foi alterada nesta missão |
 | Lint | PASS (execução anterior desta missão; nenhuma fonte TypeScript foi alterada depois) |
-| Runtime audit | `npm audit --omit=dev`: 0 vulnerabilidades |
-| Release gate | self-test 4/4 PASS; precheck novo PASS |
+| Runtime audit | Baseline informado: 0 vulnerabilidades. Reexecução final não concluiu porque o endpoint de audit do registry não respondeu neste ambiente; nenhuma alteração de dependência foi feita. |
+| Release gate | self-test 4/4 PASS; precheck novo PASS. O gate completo herda a indisponibilidade final do `npm audit`. |
 | Diff check | PASS |
 
 ## Riscos e pendências
@@ -51,4 +51,4 @@
 
 ## Veredito
 
-**B — READY WITH NON-BLOCKING RESERVATIONS.** O pipeline local foi fortalecido e está pronto para a sequência controlada; o veredito A depende de acesso remoto autorizado, postflight verde e canary humano concluído.
+**B — READY WITH NON-BLOCKING RESERVATIONS.** O pipeline local foi fortalecido e está pronto para a sequência controlada; o veredito A depende de acesso remoto autorizado, postflight verde e canary humano concluído. A única ressalva de ambiente nesta rodada é repetir o audit quando o registry estiver acessível.
