@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { PrivateRouteGuard } from "../private-route-guard";
 import { initializeSupabaseBrowserClient } from "../../lib/supabase";
 import { FeedbackMessage, useFeedback } from "../feedback";
+import { mutationFailureMessage } from "../../lib/pilot-execution-state.mjs";
 
 type Plan = {
   id:string;
@@ -123,9 +124,11 @@ export default function ActionPlans() {
       return;
     }
     actionLock.current=true; setBusyId(occurrence.id); setError(""); clearFeedback();
-    const supabase=await initializeSupabaseBrowserClient();
-    if (!supabase) { actionLock.current=false; setBusyId(""); return; }
-    const {data:plan,error:planError}=await supabase.from("action_plans").insert({
+    let persisted=false;
+    try {
+      const supabase=await initializeSupabaseBrowserClient();
+      if (!supabase) { setError("Supabase não configurado."); return; }
+      const {data:plan,error:planError}=await supabase.from("action_plans").insert({
       organization_id:organizationId,
       non_conformity_id:occurrence.id,
       description:`Corrigir: ${itemNames[occurrence.item_id] || "não conformidade operacional"}`,
@@ -134,13 +137,10 @@ export default function ActionPlans() {
       status:"in_progress",
       created_by:userId,
     }).select("id").single();
-    if (planError || !plan) {
-      setError(planError?.message || "O plano não foi persistido.");
-    } else {
-      showFeedback("Plano de ação criado e atribuído.");
-      await load();
-    }
-    actionLock.current=false; setBusyId("");
+      if (planError || !plan) setError(planError?.message || "O plano não foi persistido.");
+      else { persisted=true; showFeedback("Plano de ação criado e atribuído."); await load(); }
+    } catch { setError(mutationFailureMessage(persisted, "Criar o plano")); }
+    finally { actionLock.current=false; setBusyId(""); }
   };
 
   const uploadCorrection = async (plan:Plan,file:File|null) => {
@@ -150,12 +150,14 @@ export default function ActionPlans() {
     if (!extension) { setError("Envie uma fotografia JPG, PNG ou WebP."); return; }
     if (file.size>10*1024*1024) { setError("A fotografia deve ter no máximo 10 MB."); return; }
     actionLock.current=true; setBusyId(plan.id); setError(""); clearFeedback();
-    const supabase=await initializeSupabaseBrowserClient();
-    if (!supabase) { actionLock.current=false; setBusyId(""); return; }
-    const storagePath=`${organizationId}/action-plans/${plan.id}/${crypto.randomUUID()}.${extension}`;
-    const {error:uploadError}=await supabase.storage.from("checkflow-evidence").upload(storagePath,file,{contentType:file.type,upsert:false});
-    if (uploadError) setError(uploadError.message);
-    else {
+    let persisted=false;
+    try {
+      const supabase=await initializeSupabaseBrowserClient();
+      if (!supabase) { setError("Supabase não configurado."); return; }
+      const storagePath=`${organizationId}/action-plans/${plan.id}/${crypto.randomUUID()}.${extension}`;
+      const {error:uploadError}=await supabase.storage.from("checkflow-evidence").upload(storagePath,file,{contentType:file.type,upsert:false});
+      if (uploadError) setError(uploadError.message || "Não foi possível enviar a fotografia.");
+      else {
       const {error:updateError}=await supabase.from("action_plans").update({
         correction_comment:storagePath,
         status:"awaiting_validation",
@@ -165,27 +167,32 @@ export default function ActionPlans() {
         // failed to commit. Cleanup runs only in a quiesced operator window.
         setError(`${updateError.message} A fotografia enviada foi preservada. Atualize a página antes de tentar novamente.`);
       } else {
+        persisted=true;
         showFeedback("Correção enviada para validação do gestor.");
         await load();
       }
-    }
-    actionLock.current=false; setBusyId("");
+      }
+    } catch { setError(mutationFailureMessage(persisted, "Enviar a fotografia")); }
+    finally { actionLock.current=false; setBusyId(""); }
   };
 
   const validatePlan = async (plan:Plan,approved:boolean) => {
     if (!canManage || plan.status!=="awaiting_validation" || actionLock.current) return;
     actionLock.current=true; setBusyId(plan.id); setError(""); clearFeedback();
-    const supabase=await initializeSupabaseBrowserClient();
-    if (!supabase) { actionLock.current=false; setBusyId(""); return; }
-    const status=approved?"completed":"rejected";
-    const {error:planError}=await supabase.from("action_plans").update({
+    let persisted=false;
+    try {
+      const supabase=await initializeSupabaseBrowserClient();
+      if (!supabase) { setError("Supabase não configurado."); return; }
+      const status=approved?"completed":"rejected";
+      const {error:planError}=await supabase.from("action_plans").update({
       status,
       validated_by:userId,
       validated_at:new Date().toISOString(),
     }).eq("id",plan.id).select("id").single();
-    if (planError) setError(planError.message);
-    else { showFeedback(approved?"Correção aprovada.":"Correção reprovada."); await load(); }
-    actionLock.current=false; setBusyId("");
+      if (planError) setError(planError.message || "A validação não foi persistida.");
+      else { persisted=true; showFeedback(approved?"Correção aprovada.":"Correção reprovada."); await load(); }
+    } catch { setError(mutationFailureMessage(persisted, "Validar a correção")); }
+    finally { actionLock.current=false; setBusyId(""); }
   };
 
   return <main className="detail-page action-page">

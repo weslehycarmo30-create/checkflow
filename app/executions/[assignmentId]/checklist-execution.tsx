@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { PrivateRouteGuard } from "../../private-route-guard";
 import { initializeSupabaseBrowserClient } from "../../../lib/supabase";
 import { FeedbackMessage, useFeedback } from "../../feedback";
+import { executionProgress, requiredExecutionItems } from "../../../lib/pilot-execution-state.mjs";
 
 type Assignment = {
   id: string;
@@ -50,14 +51,8 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     const value = answers[item.id];
     return value !== undefined && value !== null && value !== "";
   }).length;
-  const progress = items.length ? Math.round(answeredCount / items.length * 100) : 0;
-  const requiredMissing = items.filter(item => {
-    if (!item.required) return false;
-    const value = answers[item.id];
-    if (value === undefined || value === null || value === "") return true;
-    return item.answer_type==="yes_no" && value==="Não" &&
-      (!observations[item.id]?.trim() || !nonConformityItems.includes(item.id));
-  });
+  const progress = executionProgress(items, answers);
+  const requiredMissing = requiredExecutionItems(items, answers, observations, nonConformityItems);
 
   const load = async () => {
     setLoading(true);

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { PrivateRouteGuard } from "../../private-route-guard";
 import { initializeSupabaseBrowserClient } from "../../../lib/supabase";
 import { FeedbackMessage, useFeedback } from "../../feedback";
+import { selectReusableAssignment } from "../../../lib/pilot-execution-state.mjs";
 
 type Checklist = {
   id: string;
@@ -243,10 +244,7 @@ showFeedback("Item adicionado.");
         const current = executionsByAssignment.get(execution.assignment_id) || [];
         executionsByAssignment.set(execution.assignment_id, [...current, execution]);
       }
-      const reusableAssignment = existing.find(candidate => {
-        const executions = executionsByAssignment.get(candidate.id) || [];
-        return executions.length === 0 || executions.some(execution => execution.status === "in_progress" || execution.status === "paused");
-      });
+      const reusableAssignment = selectReusableAssignment(existing, executionsByAssignment);
       if (reusableAssignment) {
         const { error: updateError } = await supabase.from("checklist_assignments").update(assignmentValues).eq("id", reusableAssignment.id);
         assignmentError = updateError;

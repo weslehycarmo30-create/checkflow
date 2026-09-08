@@ -12,7 +12,7 @@ const snapshotMigration = await readFile(new URL("../supabase/migrations/2026082
 test("reassigning after a completed execution creates a new assignment", () => {
   assert.match(detail, /from\("checklist_assignments"\)[\s\S]*\.eq\("assigned_to", assignedTo\)[\s\S]*\.eq\("active", true\)/);
   assert.match(detail, /from\("checklist_executions"\)[\s\S]*\.in\("assignment_id", existingIds\)/);
-  assert.match(detail, /status === "in_progress" \|\| execution\.status === "paused"/);
+  assert.match(detail, /selectReusableAssignment/);
   assert.match(detail, /if \(!existing\?\.length \|\| \(!reusedAssignment && !assignmentError\)\)/);
   assert.match(detail, /Nova atribuição criada\./);
 });
@@ -27,7 +27,7 @@ test("operation renders each active assignment separately and execution is assig
 
 test("a new execution starts empty while completed history stays immutable", () => {
   assert.match(execution, /const \[answers,setAnswers\] = useState<Record<string,AnswerValue>>\(\{\}\)/);
-  assert.match(execution, /const progress = items\.length \? Math\.round\(answeredCount \/ items\.length \* 100\) : 0/);
+  assert.match(execution, /executionProgress\(items, answers\)/);
   assert.match(execution, /\.from\("execution_answers"\)[\s\S]*\.select\("item_id,value,observation"\)/);
   assert.match(execution, /\.eq\("execution_id", executionData\.id\)/);
   assert.match(execution, /checklist_executions"\)\.insert\([\s\S]*assignment_id: assignment\.id/);
