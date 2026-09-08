@@ -18,6 +18,18 @@ function docker(args, input) {
 }
 const endpoint = docker(['context', 'inspect', '--format', '{{.Endpoints.docker.Host}}']).trim();
 if (!/^(npipe:\/\/|unix:\/\/)/.test(endpoint)) throw new Error('Docker endpoint must be a local pipe/socket');
+// This gate reproduces the platform schemas from the selected local Supabase
+// database. Fail before creating a disposable product database when the local
+// stack is incomplete; otherwise a missing Storage schema is reported later
+// as a misleading product-migration failure.
+const platformCapabilities = docker([
+  'exec', '-i', container, 'psql', '-X', '-At', '-v', 'ON_ERROR_STOP=1',
+  '-U', 'postgres', '-d', 'postgres',
+], "select coalesce(to_regclass('auth.users')::text,'missing'), coalesce(to_regclass('storage.buckets')::text,'missing'), coalesce(to_regclass('storage.objects')::text,'missing');").trim().split('|');
+const [authUsers, storageBuckets, storageObjects] = platformCapabilities;
+if (authUsers !== 'auth.users' || storageBuckets !== 'storage.buckets' || storageObjects !== 'storage.objects') {
+  throw new Error(`Local Supabase platform is incomplete (auth.users=${authUsers || 'missing'}, storage.buckets=${storageBuckets || 'missing'}, storage.objects=${storageObjects || 'missing'}). Start or repair the local Supabase stack before running SQL gates.`);
+}
 const database = `checkflow_gate_${Date.now()}`;
 const sql = (input, db = database) => docker(['exec', '-i', container, 'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', db], input);
 sql(`CREATE DATABASE ${database};`, 'postgres');
