@@ -6,6 +6,7 @@ import { PrivateRouteGuard } from "../../private-route-guard";
 import { initializeSupabaseBrowserClient } from "../../../lib/supabase";
 import { FeedbackMessage, useFeedback } from "../../feedback";
 import { executionProgress, requiredExecutionItems } from "../../../lib/pilot-execution-state.mjs";
+import { operationalFailure, safeOperationalMessage } from "../../../lib/operational-telemetry.mjs";
 
 type Assignment = {
   id: string;
@@ -53,6 +54,10 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
   }).length;
   const progress = executionProgress(items, answers);
   const requiredMissing = requiredExecutionItems(items, answers, observations, nonConformityItems);
+  const reportFailure = (errorCode:string, operation:string, entity:string, entityId?:string, error?:unknown) => {
+    operationalFailure({ operation, entity, entityId, organizationId: assignment?.organization_id, errorCode, error });
+    setError(safeOperationalMessage(errorCode, operation));
+  };
 
   const load = async () => {
     setLoading(true);
@@ -126,9 +131,10 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     if (!assignment || actionLock.current) return;
     actionLock.current = true;
     setBusy(true); setError("");
+    try {
     const supabase = await initializeSupabaseBrowserClient();
-    if (!supabase) { setBusy(false); actionLock.current = false; return; }
-    const { data: existing } = await supabase.from("checklist_executions")
+    if (!supabase) { reportFailure("EXECUTION_START_FAILED", "iniciar a execução", "assignment", assignment.id); return; }
+    const { data: existing, error: existingError } = await supabase.from("checklist_executions")
       .select("id,status,started_at,completed_at")
       .eq("assignment_id", assignment.id)
       .eq("executor_id", userId)
@@ -136,6 +142,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
       .order("started_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    if (existingError) { reportFailure("EXECUTION_START_FAILED", "confirmar a execução existente", "assignment", assignment.id, existingError); return; }
     if (existing) {
       setExecution(existing as Execution);
       showFeedback("Execução existente recuperada.");
@@ -152,10 +159,10 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
       status: "in_progress",
       created_by: userId,
     }).select("id,status,started_at,completed_at").single();
-    if (startError) setError(startError.message);
+    if (startError || !data) reportFailure("EXECUTION_START_FAILED", "iniciar a execução", "assignment", assignment.id, startError);
     else { setExecution(data as Execution); showFeedback("Execução iniciada."); }
-    setBusy(false);
-    actionLock.current = false;
+    } catch (error) { reportFailure("EXECUTION_START_FAILED", "iniciar a execução", "assignment", assignment.id, error); }
+    finally { setBusy(false); actionLock.current = false; }
   };
 
   const setExecutionStatus = async (status:"paused"|"in_progress") => {
@@ -181,8 +188,9 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     if (!execution || !assignment || execution.status!=="in_progress" || savingItems.includes(itemId)) return;
     setSavingItems(current=>[...current,itemId]);
     setError("");
+    try {
     const supabase = await initializeSupabaseBrowserClient();
-    if (!supabase) { setSavingItems(current=>current.filter(id=>id!==itemId)); setError("Supabase não configurado."); return; }
+    if (!supabase) { reportFailure("ANSWER_SAVE_FAILED", "salvar a resposta", "item", itemId); return; }
     const { data, error: answerError } = await supabase.from("execution_answers").upsert({
       organization_id: assignment.organization_id,
       execution_id: execution.id,
@@ -193,12 +201,13 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
       answered_at: new Date().toISOString(),
       created_by: userId,
     }, { onConflict: "execution_id,item_id" }).select("id").maybeSingle();
-    if (answerError || !data) setError(answerError?.message || "A resposta não foi persistida. Tente novamente.");
+    if (answerError || !data) reportFailure("ANSWER_SAVE_FAILED", "salvar a resposta", "item", itemId, answerError);
     else {
       setAnswers(current=>({...current,[itemId]:value}));
       showFeedback("Resposta salva.");
     }
-    setSavingItems(current=>current.filter(id=>id!==itemId));
+    } catch (error) { reportFailure("ANSWER_SAVE_FAILED", "salvar a resposta", "item", itemId, error); }
+    finally { setSavingItems(current=>current.filter(id=>id!==itemId)); }
   };
 
   const saveNonConformity = async (item:Item) => {
@@ -251,12 +260,9 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     setSavingItems(current=>[...current,itemId]);
     setError("");
     clearFeedback();
+    try {
     const supabase = await initializeSupabaseBrowserClient();
-    if (!supabase) {
-      setSavingItems(current=>current.filter(id=>id!==itemId));
-      setError("Supabase não configurado.");
-      return;
-    }
+    if (!supabase) { reportFailure("UPLOAD_FAILED", "enviar a fotografia", "item", itemId); return; }
     const storagePath = `${assignment.organization_id}/${execution.id}/${itemId}/${crypto.randomUUID()}.${extension}`;
     const { error: uploadError } = await supabase.storage.from("checkflow-evidence").upload(storagePath,file,{
       contentType:file.type,
@@ -264,8 +270,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
       cacheControl:"3600",
     });
     if (uploadError) {
-      setSavingItems(current=>current.filter(id=>id!==itemId));
-      setError(uploadError.message || "Não foi possível enviar a fotografia.");
+      reportFailure("UPLOAD_FAILED", "enviar a fotografia", "item", itemId, uploadError);
       return;
     }
     const { error: recordError } = await supabase.rpc("record_checkflow_execution_photo_evidence", {
@@ -277,16 +282,17 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
       p_size_bytes: file.size,
     });
     if (recordError) {
-      setSavingItems(current=>current.filter(id=>id!==itemId));
       // Preserve uploads even after a lost RPC response: the link may exist.
-      setError(`${recordError.message} A fotografia enviada foi preservada. Atualize a página antes de tentar novamente.`);
+      operationalFailure({ operation:"vincular fotografia", entity:"item", entityId:itemId, organizationId:assignment.organization_id, errorCode:"UPLOAD_FAILED", error:recordError });
+      setError("A fotografia pode ter sido enviada, mas o vínculo não foi confirmado. Atualize a página antes de tentar novamente. Código: UPLOAD_FAILED.");
       return;
     }
     const { data:signed } = await supabase.storage.from("checkflow-evidence").createSignedUrl(storagePath,3600);
     setAnswers(current=>({...current,[itemId]:storagePath}));
     if (signed?.signedUrl) setPhotoUrls(current=>({...current,[itemId]:signed.signedUrl}));
-    setSavingItems(current=>current.filter(id=>id!==itemId));
     showFeedback("Fotografia salva e vinculada à execução.");
+    } catch (error) { reportFailure("UPLOAD_FAILED", "enviar a fotografia", "item", itemId, error); }
+    finally { setSavingItems(current=>current.filter(id=>id!==itemId)); }
   };
 
   const finishExecution = async () => {
@@ -301,8 +307,9 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     }
     actionLock.current = true;
     setBusy(true); setError("");
+    try {
     const supabase = await initializeSupabaseBrowserClient();
-    if (!supabase) { setBusy(false); actionLock.current = false; return; }
+    if (!supabase) { reportFailure("EXECUTION_COMPLETE_FAILED", "concluir o checklist", "execution", execution.id); return; }
     const conformingCount = items.filter(item => {
       const value = answers[item.id];
       if (item.answer_type==="checkbox") return value===true;
@@ -317,13 +324,13 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
       conformity_percentage: conformity,
       summary: { total_items: items.length, answered_items: answeredCount, required_complete: true },
     }).eq("id", execution.id).select("id").maybeSingle();
-    if (completionError || !data) setError(completionError?.message || "A conclusão não foi persistida.");
+    if (completionError || !data) reportFailure("EXECUTION_COMPLETE_FAILED", "concluir o checklist", "execution", execution.id, completionError);
     else {
       setExecution({...execution,status:"completed",completed_at:completedAt});
       showFeedback("Checklist finalizado com sucesso.");
     }
-    setBusy(false);
-    actionLock.current = false;
+    } catch (error) { reportFailure("EXECUTION_COMPLETE_FAILED", "concluir o checklist", "execution", execution.id, error); }
+    finally { setBusy(false); actionLock.current = false; }
   };
 
   const answerField = (item:Item) => {
