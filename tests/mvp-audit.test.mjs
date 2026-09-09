@@ -19,7 +19,8 @@ test("dashboard no longer presents the former fictional operation as real", () =
 test("execution waits for persistence and blocks duplicate critical actions", () => {
   assert.match(execution, /savingItems\.length > 0/);
   assert.match(execution, /actionLock\.current/);
-  assert.match(execution, /A resposta não foi persistida/);
+  assert.match(execution, /ANSWER_SAVE_FAILED/);
+  assert.match(execution, /safeOperationalMessage/);
   assert.match(execution, /\.select\("id"\)\.maybeSingle\(\)/);
 });
 
