@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { SDR_STAGES, calculateScore, findDuplicate, importProspects, parseCsv, tierForScore } from "../lib/sdr-engine.mjs";
+import { SDR_STAGES, calculateScore, enrichProspect, findDuplicate, importProspects, normalizeImportRow, parseCsv, tierForScore } from "../lib/sdr-engine.mjs";
 import { SDR_STORAGE_KEY, loadSdrProspects, saveSdrProspects } from "../lib/sdr-storage.mjs";
 import { readFileSync } from "node:fs";
 
@@ -26,6 +26,21 @@ test("pipeline has dedicated CheckFlow stages", () => {
 test("CSV parser preserves the commercial fields", () => {
   const rows = parseCsv("company_name,cidade,observacoes\nBar Aurora,Brasília,\"abre, fecha tarde\"");
   assert.deepEqual(rows[0], {company_name:"Bar Aurora",cidade:"Brasília",observacoes:"abre, fecha tarde"});
+});
+test("Fênix and Castro research fit scores win over readiness", () => {
+  const fenix=enrichProspect({company:"Fênix Eventos e Buffet",city:"Brasília",segment:"Buffet e produção de eventos",phone:"61 9999",score:"100",tier:"HOT"});
+  const castros=enrichProspect({company_name:"Castro's",cidade:"Brasília",segmento:"restaurantes",research_score:"95",research_tier:"HOT"});
+  assert.equal(fenix.research_score,100); assert.equal(fenix.research_tier,"HOT"); assert.equal(fenix.readiness_tier,"WARM");
+  assert.equal(castros.research_score,95); assert.equal(castros.research_tier,"HOT");
+});
+test("legacy aliases and semantic buffet/event fit are deterministic", () => {
+  const row=normalizeImportRow({company:"Casa",segment:"Buffet e produção de eventos",city:"DF",phone:"1",operation_size_estimate:"8",source:"indicação",notes:"x",status:"RAW LEAD"});
+  assert.equal(row.company_name,"Casa"); assert.equal(row.segmento,"Buffet e produção de eventos"); assert.equal(calculateScore(row),75);
+});
+test("duplicate research update preserves local timeline", () => {
+  const old=enrichProspect({id:"f",company_name:"Fênix",cidade:"DF",timeline:[{id:"t"}]});
+  const result=importProspects([{company:"Fênix",city:"DF",score:"100",tier:"HOT"}],[old]);
+  assert.equal(result.imported.length,0); assert.equal(result.conflicts[0].updateAvailable,true); assert.equal(old.timeline.length,1);
 });
 test("storage loads only after the client hydration step and preserves existing records", () => {
   const existing = [{ id:"p-100", company_name:"Cem Leads", timeline:[] }];
