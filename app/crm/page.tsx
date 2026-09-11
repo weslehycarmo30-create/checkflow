@@ -3,10 +3,10 @@
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ACTIVITY_TYPES, SDR_STAGES, enrichProspect, importProspects, parseCsv } from "../../lib/sdr-engine.mjs";
+import { loadSdrProspects, saveSdrProspects } from "../../lib/sdr-storage.mjs";
 
 type Activity = { id:string; type:string; note:string; at:string };
 type Prospect = ReturnType<typeof enrichProspect>;
-const STORAGE_KEY = "checkflow-sdr-v1";
 const templates = [
   ["Primeiro contato", "Oi, {nome}! Vi o trabalho da {empresa} em {cidade}. O CheckFlow ajuda operações a transformarem rotinas em checklists simples, com histórico e responsáveis. Posso te mostrar em 10 minutos?"],
   ["Follow-up D2", "Oi, {nome}! Passando para saber se faz sentido olhar uma forma mais simples de acompanhar a operação da {empresa}. Tenho dois horários curtos esta semana."],
@@ -18,10 +18,11 @@ const empty = { company_name:"", instagram:"", whatsapp:"", telefone:"", email:"
 function dateLabel(value:string) { return new Intl.DateTimeFormat("pt-BR", { dateStyle:"short", timeStyle:"short" }).format(new Date(value)); }
 
 export default function CrmPage() {
-  const [prospects, setProspects] = useState<Prospect[]>(() => {
-    if (typeof window === "undefined") return [];
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); } catch { return []; }
-  });
+  // SSR and the first client render are intentionally identical: no browser
+  // storage, time, IDs or locale-dependent prospect values are read in render.
+  const [prospects, setProspects] = useState<Prospect[]>([]);
+  const [hydrated, setHydrated] = useState(false);
+  const [storageWritable, setStorageWritable] = useState(false);
   const [form, setForm] = useState<Record<string,string>>(empty);
   const [selected, setSelected] = useState<string>("");
   const [filter, setFilter] = useState("TODOS");
@@ -29,7 +30,21 @@ export default function CrmPage() {
   const [importResult, setImportResult] = useState<ReturnType<typeof importProspects>|null>(null);
   const [activity, setActivity] = useState({ type:"WhatsApp", note:"" });
   const selectedProspect = prospects.find(prospect=>prospect.id===selected) || null;
-  useEffect(()=>{ localStorage.setItem(STORAGE_KEY, JSON.stringify(prospects)); },[prospects]);
+  useEffect(()=>{
+    const frame = window.requestAnimationFrame(() => {
+      const result = loadSdrProspects(window.localStorage);
+      if (result.status === "loaded") setProspects(result.prospects as Prospect[]);
+      if (result.status === "invalid") setNotice("Os dados locais são inválidos e foram preservados sem alteração.");
+      if (result.status === "unavailable") setNotice("O armazenamento local não está disponível; os dados não serão gravados.");
+      setStorageWritable(result.status === "loaded" || result.status === "empty");
+      setHydrated(true);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  },[]);
+  useEffect(()=>{
+    if (!hydrated || !storageWritable) return;
+    if (!saveSdrProspects(window.localStorage, prospects).ok) window.requestAnimationFrame(()=>setNotice("Não foi possível salvar localmente; seus dados existentes não foram apagados."));
+  },[hydrated,prospects,storageWritable]);
   const visible = useMemo(()=>prospects.filter(p=>filter==="TODOS" || p.stage===filter),[prospects,filter]);
   const metrics = useMemo(()=>{
     const today = new Date().toDateString(); const researched = prospects.filter(p=>p.stage!=="RAW LEAD" && new Date(p.updated_at).toDateString()===today).length;
@@ -44,6 +59,7 @@ export default function CrmPage() {
   function importFile(event:ChangeEvent<HTMLInputElement>) { const file=event.target.files?.[0]; if (!file) return; const reader=new FileReader(); reader.onload=()=>{ const result=importProspects(parseCsv(String(reader.result)),prospects,{dryRun:true}); setImportResult(result); setNotice(`Dry-run: ${result.imported.length} prontos; ${result.conflicts.length} conflitos.`); }; reader.readAsText(file); }
   function applyImport() { if (!importResult) return; setProspects(current=>[...importResult.imported,...current]); setNotice(`${importResult.imported.length} prospects importados; duplicados ficaram de fora.`); setImportResult(null); }
   function logActivity() { if (!selectedProspect || !activity.note.trim()) return; const entry:Activity={id:crypto.randomUUID(),type:activity.type,note:activity.note.trim(),at:new Date().toISOString()}; update(selectedProspect.id,{timeline:[entry,...selectedProspect.timeline]}); setActivity(value=>({...value,note:""})); setNotice("Atividade registrada na timeline."); }
+  if (!hydrated) return <main className="sdr-shell" aria-busy="true"><header className="sdr-header"><Link href="/" className="sdr-back">← CheckFlow</Link><div><p className="sdr-eyebrow">CRMFACTORY × CHECKFLOW</p><h1>SDR Command Center</h1></div><span className="sdr-local">● Local-only</span></header><section className="sdr-hydration-shell"><p className="sdr-eyebrow">CRM SDR</p><h2>Carregando dados locais…</h2><p>O pipeline será exibido após verificar o armazenamento deste navegador.</p></section></main>;
   return <main className="sdr-shell">
     <header className="sdr-header"><Link href="/" className="sdr-back">← CheckFlow</Link><div><p className="sdr-eyebrow">CRMFACTORY × CHECKFLOW</p><h1>SDR Command Center</h1></div><span className="sdr-local">● Local-only</span></header>
     <section className="sdr-metrics">
