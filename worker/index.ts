@@ -10,6 +10,10 @@ interface Env {
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?: string;
   NEXT_PUBLIC_SUPABASE_ANON_KEY?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
+  // This binding exists only in the local Vite/Miniflare configuration. It is
+  // deliberately not a hosted Sites variable: CRM must be unavailable unless
+  // the runtime explicitly identifies itself as the local development target.
+  CRM_LOCAL_DEVELOPMENT?: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -33,7 +37,7 @@ interface ExecutionContext {
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
-    const crmResponse = crmPublicationResponse(url.pathname, import.meta.env.DEV);
+    const crmResponse = crmPublicationResponse(url.pathname, env.CRM_LOCAL_DEVELOPMENT === "true");
     if (crmResponse) return crmResponse;
 
     if (url.pathname === "/api/team-invitations") {

@@ -20,7 +20,7 @@ const productionEnv = {
   },
 };
 
-test("development keeps the local CRM route available to Vinext", () => {
+test("only the explicit local runtime binding keeps CRM available to Vinext", () => {
   assert.equal(isCrmPath("/crm"), true);
   assert.equal(isCrmPath("/crm/import"), true);
   assert.equal(isCrmPath("/%63rm%2Fimport"), true);
@@ -28,14 +28,28 @@ test("development keeps the local CRM route available to Vinext", () => {
   assert.equal(crmPublicationResponse("/", true), null);
 });
 
-test("production blocks CRM before it can render SDR content while the product route remains available", async () => {
+test("production artifact blocks CRM spellings and query strings before SDR can render", async () => {
   const worker = await loadBuiltWorker();
-  for (const pathname of ["/crm", "/crm/import", "/%63rm%2Fimport"]) {
-    const blocked = await worker.fetch(new Request(`http://localhost${pathname}`), productionEnv, context);
+  for (const target of [
+    "/crm",
+    "/crm?utm_source=chatgpt.com",
+    "/crm/",
+    "/crm/import",
+    "/%63rm",
+    "/%63rm%2Fimport",
+  ]) {
+    const blocked = await worker.fetch(new Request(`https://checkflow.example${target}`), productionEnv, context);
     assert.equal(blocked.status, 404);
     assert.equal(blocked.headers.get("cache-control"), "no-store");
     assert.doesNotMatch(await blocked.text(), /SDR Command Center|CRMFACTORY|prospect/i);
   }
+
+  const localCrm = await worker.fetch(
+    new Request("http://127.0.0.1:3000/crm"),
+    { ...productionEnv, CRM_LOCAL_DEVELOPMENT: "true" },
+    context,
+  );
+  assert.notEqual(localCrm.status, 404);
 
   const home = await worker.fetch(new Request("http://localhost/", { headers: { accept: "text/html" } }), productionEnv, context);
   assert.equal(home.status, 200);
