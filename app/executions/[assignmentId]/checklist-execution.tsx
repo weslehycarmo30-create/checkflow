@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { PrivateRouteGuard } from "../../private-route-guard";
 import { initializeSupabaseBrowserClient } from "../../../lib/supabase";
 import { FeedbackMessage, useFeedback } from "../../feedback";
-import { executionProgress, requiredExecutionItems } from "../../../lib/pilot-execution-state.mjs";
+import { executionProgress, executionSectionsFromSnapshot, isAnswered, requiredExecutionItems } from "../../../lib/pilot-execution-state.mjs";
 import { operationalFailure, safeOperationalMessage } from "../../../lib/operational-telemetry.mjs";
 
 type Assignment = {
@@ -28,7 +28,7 @@ type Item = {
   require_observation_on_failure?: boolean;
 };
 type Section = { id: string; title: string; position: number; checklist_items: Item[] };
-type Execution = { id: string; status: "in_progress" | "paused" | "completed"; started_at: string; completed_at?: string | null };
+type Execution = { id: string; status: "in_progress" | "paused" | "completed"; started_at: string; completed_at?: string | null; execution_snapshot?: unknown };
 type AnswerValue = boolean | string | number | null;
 
 export default function ChecklistExecution({ assignmentId }: { assignmentId: string }) {
@@ -49,11 +49,11 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
   const actionLock = useRef(false);
   const items = useMemo(()=>sections.flatMap(section=>section.checklist_items),[sections]);
   const answeredCount = items.filter(item => {
-    const value = answers[item.id];
-    return value !== undefined && value !== null && value !== "";
+    return isAnswered(answers[item.id], item.answer_type);
   }).length;
   const progress = executionProgress(items, answers);
   const requiredMissing = requiredExecutionItems(items, answers, observations, nonConformityItems);
+  const invalidPersistedCompletion = execution?.status === "completed" && requiredMissing.length > 0;
   const reportFailure = (errorCode:string, operation:string, entity:string, entityId?:string, error?:unknown) => {
     operationalFailure({ operation, entity, entityId, organizationId: assignment?.organization_id, errorCode, error });
     setError(safeOperationalMessage(errorCode, operation));
@@ -84,18 +84,24 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     const [{ data: checklistRecord, error: checklistError }, { data: sectionData, error: sectionError }, { data: executionData, error: executionError }] = await Promise.all([
       supabase.from("checklists").select("id,name,description,category").eq("id", currentAssignment.checklist_id).maybeSingle(),
       supabase.from("checklist_sections").select("id,title,position,checklist_items(id,prompt,answer_type,required,position,options,nonconformity_on_no,require_observation_on_failure)").eq("checklist_id", currentAssignment.checklist_id).order("position"),
-      supabase.from("checklist_executions").select("id,status,started_at,completed_at").eq("assignment_id", assignmentId).eq("executor_id", user.id).in("status", ["in_progress","paused","completed"]).order("started_at", { ascending: false }).limit(1).maybeSingle(),
+      supabase.from("checklist_executions").select("id,status,started_at,completed_at,execution_snapshot").eq("assignment_id", assignmentId).eq("executor_id", user.id).in("status", ["in_progress","paused","completed"]).order("started_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
     if (checklistError || !checklistRecord) setError(checklistError?.message || "Checklist não encontrado.");
     else setChecklist(checklistRecord as Checklist);
     if (sectionError) setError(sectionError.message);
-    setSections(((sectionData || []) as Section[]).map(section=>({
+    const liveSections = ((sectionData || []) as Section[]).map(section=>({
       ...section,
       checklist_items:[...(section.checklist_items||[])].sort((a,b)=>a.position-b.position),
-    })));
+    }));
     if (executionError) setError(executionError.message);
     if (executionData) {
-      setExecution(executionData as Execution);
+      const persistedExecution = executionData as Execution;
+      const persistedSections = executionSectionsFromSnapshot(persistedExecution.execution_snapshot);
+      if (!persistedSections) {
+        setError("A execução não possui um snapshot persistido válido. Ela não pode ser exibida com a estrutura atual do checklist.");
+        setSections([]);
+      } else setSections(persistedSections as Section[]);
+      setExecution(persistedExecution);
       const { data: answerData, error: answerError } = await supabase
         .from("execution_answers")
         .select("item_id,value,observation")
@@ -117,7 +123,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
         .eq("execution_id", executionData.id);
       if (occurrenceError) setError(occurrenceError.message);
       else setNonConformityItems((occurrences || []).map(occurrence=>occurrence.item_id));
-    }
+    } else setSections(liveSections);
     setLoading(false);
   };
 
@@ -135,7 +141,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     const supabase = await initializeSupabaseBrowserClient();
     if (!supabase) { reportFailure("EXECUTION_START_FAILED", "iniciar a execução", "assignment", assignment.id); return; }
     const { data: existing, error: existingError } = await supabase.from("checklist_executions")
-      .select("id,status,started_at,completed_at")
+      .select("id,status,started_at,completed_at,execution_snapshot")
       .eq("assignment_id", assignment.id)
       .eq("executor_id", userId)
       .in("status", ["in_progress","paused"])
@@ -158,7 +164,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
       executor_id: userId,
       status: "in_progress",
       created_by: userId,
-    }).select("id,status,started_at,completed_at").single();
+    }).select("id,status,started_at,completed_at,execution_snapshot").single();
     if (startError || !data) reportFailure("EXECUTION_START_FAILED", "iniciar a execução", "assignment", assignment.id, startError);
     else { setExecution(data as Execution); showFeedback("Execução iniciada."); }
     } catch (error) { reportFailure("EXECUTION_START_FAILED", "iniciar a execução", "assignment", assignment.id, error); }
@@ -371,7 +377,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
 
   return <main className="execution-page">
     <PrivateRouteGuard />
-    <header className="execution-header"><button className="back-link" onClick={()=>{window.location.href="/"}}>← Minhas tarefas</button>{execution&&<span className={`execution-status ${execution.status}`}>{execution.status==="paused"?"Pausado":execution.status==="completed"?"Finalizado":"Em execução"}</span>}</header>
+    <header className="execution-header"><button className="back-link" onClick={()=>{window.location.href="/"}}>← Minhas tarefas</button>{execution&&<span className={`execution-status ${execution.status}`}>{execution.status==="paused"?"Pausado":execution.status==="completed"?(invalidPersistedCompletion?"Inconsistência detectada":"Finalizado"):"Em execução"}</span>}</header>
     {loading&&<section className="execution-card"><p>Carregando checklist...</p></section>}
     {!loading&&error&&!assignment&&<section className="execution-card detail-error"><h1>Acesso indisponível</h1><p>{error}</p><button className="secondary" onClick={load}>Tentar novamente</button></section>}
     {!loading&&assignment&&checklist&&<div className="execution-shell">
@@ -385,7 +391,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
       </section>
       {!execution?<section className="execution-card start-card"><h2>Pronto para começar?</h2><p>O horário de início e sua identificação serão registrados.</p><button className="primary" disabled={busy||items.length===0} onClick={startExecution}>{busy?"Iniciando...":"Iniciar checklist"}</button>{items.length===0&&<small>Este checklist ainda não possui itens.</small>}</section>:<>
         {execution.status!=="completed"&&<div className="execution-actions"><button className="secondary" disabled={busy} onClick={()=>setExecutionStatus(execution.status==="paused"?"in_progress":"paused")}>{execution.status==="paused"?"Continuar checklist":"Pausar"}</button><span>Iniciado em {new Date(execution.started_at).toLocaleString("pt-BR")}</span></div>}
-        {execution.status==="completed"&&<section className="execution-card completion-card"><span>✓</span><div><h2>Checklist finalizado</h2><p>Concluído em {new Date(execution.completed_at||execution.started_at).toLocaleString("pt-BR")}.</p></div></section>}
+        {execution.status==="completed"&&<section className="execution-card completion-card"><span>{invalidPersistedCompletion?"!":"✓"}</span><div><h2>{invalidPersistedCompletion?"Execução concluída com dados persistidos inconsistentes":"Checklist finalizado"}</h2><p>{invalidPersistedCompletion?`${requiredMissing.length} item(ns) obrigatório(s) não possuem resposta válida persistida. Nenhuma resposta foi alterada nesta tela.`:`Concluído em ${new Date(execution.completed_at||execution.started_at).toLocaleString("pt-BR")}.`}</p></div></section>}
         {sections.map(section=><section className="execution-card execution-section" key={section.id}><h2>{section.title}</h2>{section.checklist_items.map((item,index)=><article className="execution-item" key={item.id}><div className="item-number">{index+1}</div><div><label>{item.prompt}{item.required&&<em>Obrigatório</em>}</label>{answerField(item)}</div></article>)}</section>)}
         {execution.status!=="completed"&&<section className="execution-card finish-card"><button className="primary" disabled={busy||savingItems.length>0||requiredMissing.length>0||execution.status==="paused"} onClick={finishExecution}>{busy?"Finalizando...":savingItems.length>0?"Salvando respostas...":"Finalizar checklist"}</button>{requiredMissing.length>0&&<p>{requiredMissing.length} item(ns) obrigatório(s) ainda pendente(s).</p>}</section>}
       </>}
