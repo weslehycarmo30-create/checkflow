@@ -9,7 +9,7 @@
     "install:ci": "bash scripts/install-ci.sh",
     "dev": "vinext dev --hostname 127.0.0.1 --port 3000",
     "build": "node scripts/build-verified.mjs",
-    "start": "vinext start --hostname 127.0.0.1 --port 3000",
+    "start": "node scripts/start-local.mjs",
     "test": "npm run build && node --test tests/*.test.mjs",
     "validate:artifact": "bash scripts/validate-artifact.sh",
     "lint": "node scripts/run-local.mjs -- eslint . --ignore-pattern dist --ignore-pattern .next",

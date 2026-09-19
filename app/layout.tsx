@@ -19,8 +19,13 @@ const themeInitializationScript = `
 `;
 
 export const metadata: Metadata = {
-  title: "CheckFlow — Gestão de checklists",
-  description: "Gestão operacional para bares, buffets, restaurantes e empresas de eventos.",
+  title: "CheckFlow | Controle operacional para equipes",
+  description: "Organize processos, atribua responsáveis, registre evidências, trate problemas e acompanhe sua operação com o CheckFlow.",
+  openGraph: {
+    title: "CheckFlow | Controle operacional para equipes",
+    description: "Organize processos, atribua responsáveis, registre evidências, trate problemas e acompanhe sua operação com o CheckFlow.",
+    type: "website",
+  },
   other: {
     "codex-preview": "development",
   },

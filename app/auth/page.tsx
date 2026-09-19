@@ -15,7 +15,7 @@ export default function AuthPage() {
     let unsubscribe:(()=>void)|undefined;
     initializeSupabaseBrowserClient().then((client)=>{if(!client)return;
     const isReset=new URLSearchParams(window.location.search).get("mode")==="reset";
-    client.auth.getSession().then(({data})=>{if(data.session&&!isReset) window.location.replace("/")});
+    client.auth.getSession().then(({data})=>{if(data.session&&!isReset) window.location.replace("/dashboard")});
     const {data}=client.auth.onAuthStateChange((event)=>{if(event==="PASSWORD_RECOVERY") setMode("reset")});
     unsubscribe=()=>data.subscription.unsubscribe();});
     return ()=>unsubscribe?.();
@@ -29,12 +29,12 @@ export default function AuthPage() {
     try{
       if(mode==="login"){
         const {error}=await client.auth.signInWithPassword({email,password}); if(error) throw error;
-        window.location.replace("/");
+        window.location.replace("/dashboard");
       } else if(mode==="signup"){
         const redirectTo=`${window.location.origin}/auth`;
         const {data,error}=await client.auth.signUp({email,password,options:{emailRedirectTo:redirectTo,data:{full_name:name,organization_name:organization}}}); if(error) throw error;
         setMessage(data.session?"Conta criada. Redirecionando...":"Cadastro recebido. Confirme o e-mail para entrar.");
-        if(data.session) window.location.replace("/");
+        if(data.session) window.location.replace("/dashboard");
       } else if(mode==="forgot"){
         const {error}=await client.auth.resetPasswordForEmail(email,{redirectTo:`${window.location.origin}/auth?mode=reset`}); if(error) throw error;
         setMessage("Enviamos o link de recuperação para o seu e-mail.");

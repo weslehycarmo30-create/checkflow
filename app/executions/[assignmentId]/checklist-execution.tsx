@@ -377,7 +377,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
 
   return <main className="execution-page">
     <PrivateRouteGuard />
-    <header className="execution-header"><button className="back-link" onClick={()=>{window.location.href="/"}}>← Minhas tarefas</button>{execution&&<span className={`execution-status ${execution.status}`}>{execution.status==="paused"?"Pausado":execution.status==="completed"?(invalidPersistedCompletion?"Inconsistência detectada":"Finalizado"):"Em execução"}</span>}</header>
+    <header className="execution-header"><button className="back-link" onClick={()=>{window.location.href="/dashboard"}}>← Minhas tarefas</button>{execution&&<span className={`execution-status ${execution.status}`}>{execution.status==="paused"?"Pausado":execution.status==="completed"?(invalidPersistedCompletion?"Inconsistência detectada":"Finalizado"):"Em execução"}</span>}</header>
     {loading&&<section className="execution-card"><p>Carregando checklist...</p></section>}
     {!loading&&error&&!assignment&&<section className="execution-card detail-error"><h1>Acesso indisponível</h1><p>{error}</p><button className="secondary" onClick={load}>Tentar novamente</button></section>}
     {!loading&&assignment&&checklist&&<div className="execution-shell">

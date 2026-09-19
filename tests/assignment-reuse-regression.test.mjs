@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const detail = await readFile(new URL("../app/checklists/[id]/checklist-detail.tsx", import.meta.url), "utf8");
-const dashboard = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+const dashboard = await readFile(new URL("../app/dashboard/page.tsx", import.meta.url), "utf8");
 const execution = await readFile(new URL("../app/executions/[assignmentId]/checklist-execution.tsx", import.meta.url), "utf8");
 const migration = await readFile(new URL("../supabase/migrations/202607220001_base_multitenant.sql", import.meta.url), "utf8");
 const hardeningMigration = await readFile(new URL("../supabase/migrations/202607230002_hardening_rls_mvp.sql", import.meta.url), "utf8");

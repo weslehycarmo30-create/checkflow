@@ -360,7 +360,7 @@ showFeedback("Item removido.");
 
   return <main className="detail-page">
     <PrivateRouteGuard />
-    <button className="back-link" onClick={()=>{window.location.href="/"}}>← Voltar para a lista</button>
+    <button className="back-link" onClick={()=>{window.location.href="/dashboard"}}>← Voltar para a lista</button>
     {loading&&<section className="detail-card"><p>Carregando checklist...</p></section>}
     {!loading&&error&&!checklist&&<section className="detail-card detail-error"><h1>Acesso indisponível</h1><p>{error}</p><button className="secondary" onClick={load}>Tentar novamente</button></section>}
     {!loading&&checklist&&<div className="detail-layout">

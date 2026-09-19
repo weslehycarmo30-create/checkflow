@@ -4,7 +4,7 @@ import test from "node:test";
 
 const migration = await readFile(new URL("../supabase/migrations/202608260002_execution_historical_snapshot.sql", import.meta.url), "utf8");
 const history = await readFile(new URL("../app/history/[executionId]/execution-history-detail.tsx", import.meta.url), "utf8");
-const dashboard = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+const dashboard = await readFile(new URL("../app/dashboard/page.tsx", import.meta.url), "utf8");
 
 test("completed execution snapshots and protected records are installed", () => {
   assert.match(migration, /add column if not exists execution_snapshot jsonb/);

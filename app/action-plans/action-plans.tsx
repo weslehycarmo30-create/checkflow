@@ -197,7 +197,7 @@ export default function ActionPlans() {
 
   return <main className="detail-page action-page">
     <PrivateRouteGuard />
-    <button className="back-link" onClick={()=>{window.location.href="/"}}>← Voltar ao painel</button>
+    <button className="back-link" onClick={()=>{window.location.href="/dashboard"}}>← Voltar ao painel</button>
     <div className="action-shell">
       <section className="detail-card action-heading"><div><span className="segment">Módulo operacional</span><h1>Planos de ação</h1><p>Correções objetivas, com responsável, prazo e evidência.</p></div></section>
       {loading&&<section className="detail-card"><p>Carregando planos de ação...</p></section>}

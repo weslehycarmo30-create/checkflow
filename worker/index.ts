@@ -37,7 +37,10 @@ interface ExecutionContext {
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
-    const crmResponse = crmPublicationResponse(url.pathname, env.CRM_LOCAL_DEVELOPMENT === "true");
+    // `vinext start` can invoke the local worker without a bindings object.
+    // Missing binding is intentionally treated as a non-local runtime, so CRM
+    // remains denied while public application routes can still render.
+    const crmResponse = crmPublicationResponse(url.pathname, env?.CRM_LOCAL_DEVELOPMENT === "true");
     if (crmResponse) return crmResponse;
 
     if (url.pathname === "/api/team-invitations") {

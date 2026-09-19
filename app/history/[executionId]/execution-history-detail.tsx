@@ -166,7 +166,7 @@ export default function ExecutionHistoryDetail({executionId}:{executionId:string
 
   return <main className="detail-page history-detail-page">
     <PrivateRouteGuard />
-    <button className="back-link" onClick={()=>{window.location.href="/"}}>← Voltar ao histórico</button>
+    <button className="back-link" onClick={()=>{window.location.href="/dashboard"}}>← Voltar ao histórico</button>
     {loading&&<section className="detail-card detail-error"><p>Carregando detalhes da execução...</p></section>}
     {!loading&&error&&<section className="detail-card detail-error"><h1>Detalhes indisponíveis</h1><p>{error}</p><button className="secondary" onClick={load}>Tentar novamente</button></section>}
     {!loading&&!error&&execution&&<div className="history-detail-shell">

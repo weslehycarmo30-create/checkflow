@@ -4,7 +4,7 @@ import test from "node:test";
 
 const feedback = await readFile(new URL("../app/feedback.tsx", import.meta.url), "utf8");
 const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
-const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+const page = await readFile(new URL("../app/dashboard/page.tsx", import.meta.url), "utf8");
 const actionPlans = await readFile(new URL("../app/action-plans/action-plans.tsx", import.meta.url), "utf8");
 const execution = await readFile(new URL("../app/executions/[assignmentId]/checklist-execution.tsx", import.meta.url), "utf8");
 
