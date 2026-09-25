@@ -12,9 +12,11 @@ test("public landing presents the pilot and only supported operational capabilit
   assert.match(landing, /Não conformidades/);
   assert.match(landing, /plano de ação/i);
   assert.match(landing, /Histórico de execuções/);
-  assert.match(landing, /testa durante 15 dias/);
-  assert.match(landing, />15 dias</);
-  assert.doesNotMatch(landing, /14 dias/i);
+  assert.match(landing, /testa durante 14 dias/);
+  assert.match(landing, />14 dias</);
+  assert.match(landing, /1 organização/);
+  assert.match(landing, /até 48 horas/);
+  assert.doesNotMatch(landing, /15 dias/i);
   assert.doesNotMatch(landing, /inteligência artificial|offline completo|QR Code|integrações/i);
 });
 
@@ -30,6 +32,6 @@ test("pilot contact uses a valid configured WhatsApp destination or an explicit 
   assert.match(landing, /canal comercial ainda não está configurado/);
   assert.match(contact, /https:\/\/wa\.me/);
   assert.match(contact, /encodeURIComponent\(pilotMessage\)/);
-  assert.match(contact, /piloto de 15 dias/);
-  assert.doesNotMatch(contact, /14 dias/i);
+  assert.match(contact, /piloto de 14 dias/);
+  assert.doesNotMatch(contact, /15 dias/i);
 });

@@ -1,4 +1,4 @@
-const pilotMessage = "Olá! Quero testar o CheckFlow na minha operação. Gostaria de conhecer o piloto de 15 dias.";
+const pilotMessage = "Olá! Quero testar o CheckFlow na minha operação. Gostaria de conhecer o piloto de 14 dias.";
 
 export function getSalesWhatsAppUrl(configuredNumber: string | undefined): string | null {
   const number = configuredNumber?.replace(/\D/g, "") ?? "";
