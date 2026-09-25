@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { getSalesWhatsAppUrl } from "../lib/sales-contact.ts";
 
 const landing = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../app/dashboard/page.tsx", import.meta.url), "utf8");
@@ -30,8 +31,23 @@ test("pilot contact uses a valid configured WhatsApp destination or an explicit 
   const contact = await readFile(new URL("../lib/sales-contact.ts", import.meta.url), "utf8");
   assert.match(landing, /NEXT_PUBLIC_CHECKFLOW_SALES_WHATSAPP/);
   assert.match(landing, /canal comercial ainda não está configurado/);
+  assert.match(landing, /<span className="marketing-button primary marketing-button-unavailable" aria-disabled="true"/);
+  assert.doesNotMatch(landing, /<button[^>]*disabled/);
   assert.match(contact, /https:\/\/wa\.me/);
   assert.match(contact, /encodeURIComponent\(pilotMessage\)/);
   assert.match(contact, /piloto de 14 dias/);
   assert.doesNotMatch(contact, /15 dias/i);
+  assert.equal(getSalesWhatsAppUrl(undefined), null);
+  assert.equal(getSalesWhatsAppUrl(""), null);
+  assert.equal(getSalesWhatsAppUrl("123"), null);
+  const message = "Olá! Quero conhecer o CheckFlow e entender como funciona o piloto de 14 dias para minha operação.";
+  const expected = `https://wa.me/5561986428650?text=${encodeURIComponent(message)}`;
+  assert.equal(getSalesWhatsAppUrl("5561986428650"), expected);
+  assert.equal(getSalesWhatsAppUrl("+55 (61) 98642-8650"), expected);
+  assert.equal(new URL(expected).searchParams.get("text"), message);
+  assert.match(landing, /href={salesWhatsAppUrl}/);
+  assert.equal((landing.match(/<PilotCta \/>/g) ?? []).length, 3);
+  assert.match(landing, /href="#como-funciona"/);
+  assert.match(landing, /href="\/auth"/);
+  assert.doesNotMatch(landing, /href="#"/);
 });

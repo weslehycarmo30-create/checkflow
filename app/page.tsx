@@ -28,7 +28,7 @@ const salesWhatsAppUrl = getSalesWhatsAppUrl(process.env.NEXT_PUBLIC_CHECKFLOW_S
 function PilotCta() {
   return salesWhatsAppUrl
     ? <a className="marketing-button primary" href={salesWhatsAppUrl} target="_blank" rel="noreferrer">Começar meu piloto <Arrow /></a>
-    : <button className="marketing-button primary" type="button" disabled aria-describedby="sales-contact-pending">Começar meu piloto <Arrow /></button>;
+    : <span className="marketing-button primary marketing-button-unavailable" aria-disabled="true" aria-describedby="sales-contact-pending">Começar meu piloto <Arrow /></span>;
 }
 
 export default function MarketingPage() {
