@@ -14,6 +14,8 @@ test("public landing presents the pilot and only supported operational capabilit
   assert.match(landing, /href="#demonstracao"/);
   assert.match(landing, /Veja o CheckFlow em ação/);
   assert.match(landing, /VÍDEO EM PREPARAÇÃO/);
+  assert.match(landing, /Continuar explorando/);
+  assert.doesNotMatch(landing, /A demonstração em vídeo terá cerca de 30–45 segundos/);
   assert.match(landing, /controls playsInline preload="metadata" poster={demoVideoPoster}/);
   assert.match(landing, /role="dialog" aria-modal="true"/);
   assert.match(landing, /event\.key === "Escape"/);
