@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { getSalesWhatsAppUrl } from "../lib/sales-contact.ts";
+import { buildQualifiedSalesWhatsAppUrl, getSalesWhatsAppUrl } from "../lib/sales-contact.ts";
 
 const landing = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../app/dashboard/page.tsx", import.meta.url), "utf8");
@@ -10,9 +10,16 @@ const auth = await readFile(new URL("../app/auth/page.tsx", import.meta.url), "u
 test("public landing presents the pilot and only supported operational capabilities", () => {
   assert.match(landing, /Sua operação sob controle/);
   assert.match(landing, /Começar meu piloto/);
+  assert.match(landing, /Ver o CheckFlow em ação/);
+  assert.match(landing, /href="#demonstracao"/);
+  assert.match(landing, /Veja o CheckFlow em ação/);
+  assert.match(landing, /VÍDEO EM PREPARAÇÃO/);
+  assert.match(landing, /controls playsInline preload="metadata" poster={demoVideoPoster}/);
+  assert.match(landing, /role="dialog" aria-modal="true"/);
+  assert.match(landing, /event\.key === "Escape"/);
   assert.match(landing, /Não conformidades/);
   assert.match(landing, /plano de ação/i);
-  assert.match(landing, /Histórico de execuções/);
+  assert.match(landing, /Acompanhamento e histórico/);
   assert.match(landing, /testa durante 14 dias/);
   assert.match(landing, />14 dias</);
   assert.match(landing, /1 organização/);
@@ -31,8 +38,8 @@ test("pilot contact uses a valid configured WhatsApp destination or an explicit 
   const contact = await readFile(new URL("../lib/sales-contact.ts", import.meta.url), "utf8");
   assert.match(landing, /NEXT_PUBLIC_CHECKFLOW_SALES_WHATSAPP/);
   assert.match(landing, /canal comercial ainda não está configurado/);
-  assert.match(landing, /<span className="marketing-button primary marketing-button-unavailable" aria-disabled="true"/);
-  assert.doesNotMatch(landing, /<button[^>]*disabled/);
+  assert.match(landing, /<button className="marketing-button primary" type="button" onClick={onOpen}>Começar meu piloto/);
+  assert.match(landing, /marketing-button-unavailable/);
   assert.match(contact, /https:\/\/wa\.me/);
   assert.match(contact, /encodeURIComponent\(pilotMessage\)/);
   assert.match(contact, /piloto de 14 dias/);
@@ -45,9 +52,24 @@ test("pilot contact uses a valid configured WhatsApp destination or an explicit 
   assert.equal(getSalesWhatsAppUrl("5561986428650"), expected);
   assert.equal(getSalesWhatsAppUrl("+55 (61) 98642-8650"), expected);
   assert.equal(new URL(expected).searchParams.get("text"), message);
-  assert.match(landing, /href={salesWhatsAppUrl}/);
-  assert.equal((landing.match(/<PilotCta \/>/g) ?? []).length, 3);
+  assert.match(landing, /buildQualifiedSalesWhatsAppUrl/);
+  assert.match(landing, /window\.open\(url, "_blank", "noopener,noreferrer"\)/);
+  assert.match(landing, /maxLength=\{180\}/);
+  assert.equal((landing.match(/<PilotCta /g) ?? []).length, 1);
   assert.match(landing, /href="#como-funciona"/);
   assert.match(landing, /href="\/auth"/);
   assert.doesNotMatch(landing, /href="#"/);
+});
+
+test("qualification stays local and safely encodes the commercial WhatsApp message", () => {
+  const qualification = { name: "Ana\nSilva", company: "Café & Co", operation: "Restaurante", process: "Abertura & higiene" };
+  const url = buildQualifiedSalesWhatsAppUrl("+55 (61) 98642-8650", qualification);
+  assert.ok(url);
+  const message = new URL(url).searchParams.get("text");
+  assert.match(message, /Nome: Ana Silva/);
+  assert.match(message, /Empresa: Café & Co/);
+  assert.match(message, /Primeiro processo: Abertura & higiene/);
+  assert.equal(buildQualifiedSalesWhatsAppUrl("5561986428650", { ...qualification, process: " " }), null);
+  assert.equal(buildQualifiedSalesWhatsAppUrl(undefined, qualification), null);
+  assert.doesNotMatch(landing, /fetch\(|supabase|insert\(/i);
 });
