@@ -21,6 +21,9 @@ test("settings loads, validates, and saves only the current organization for own
   assert.match(dashboard, /Informe um e-mail comercial válido/);
   assert.match(dashboard, /\.update\(normalized\)\.eq\("id",organizationId\)\.select\("name,commercial_email,whatsapp,instagram,phone,address"\)\.single\(\)/);
   assert.match(dashboard, /phone:form\.phone\.trim\(\),address:form\.address\.trim\(\)/);
+  const settingsForm = dashboard.match(/function OrganizationSettingsForm[\s\S]*?function Generic/)?.[0] ?? "";
+  assert.match(settingsForm, /useState<OrganizationForm>\(\(\)=>organizationFormFromDetails\(details\)\)/);
+  assert.doesNotMatch(settingsForm, /useEffect/);
 });
 
 test("settings is read-only for managers and collaborators without placeholder content", () => {
