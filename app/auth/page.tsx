@@ -6,15 +6,19 @@ import { initializeSupabaseBrowserClient } from "../../lib/supabase";
 type Mode = "login" | "signup" | "forgot" | "reset";
 
 export default function AuthPage() {
-  const [mode,setMode]=useState<Mode>(()=>typeof window!=="undefined"&&new URLSearchParams(window.location.search).get("mode")==="reset"?"reset":"login");
+  // Keep the server HTML and the client's first render identical. Recovery
+  // query parameters are only available in the browser, so apply them after
+  // hydration rather than from the useState initializer.
+  const [mode,setMode]=useState<Mode>("login");
   const [name,setName]=useState(""); const [organization,setOrganization]=useState("");
   const [email,setEmail]=useState(""); const [password,setPassword]=useState("");
   const [message,setMessage]=useState(""); const [busy,setBusy]=useState(false);
 
   useEffect(()=>{
     let unsubscribe:(()=>void)|undefined;
-    initializeSupabaseBrowserClient().then((client)=>{if(!client)return;
     const isReset=new URLSearchParams(window.location.search).get("mode")==="reset";
+    if(isReset) setMode("reset");
+    initializeSupabaseBrowserClient().then((client)=>{if(!client)return;
     client.auth.getSession().then(({data})=>{if(data.session&&!isReset) window.location.replace("/dashboard")});
     const {data}=client.auth.onAuthStateChange((event)=>{if(event==="PASSWORD_RECOVERY") setMode("reset")});
     unsubscribe=()=>data.subscription.unsubscribe();});
