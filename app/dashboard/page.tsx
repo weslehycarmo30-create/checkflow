@@ -37,6 +37,22 @@ type DashboardExecution = {
   conformity_percentage: number | null;
   started_at: string;
 };
+type OrganizationDetails = {
+  name: string;
+  commercial_email: string | null;
+  whatsapp: string | null;
+  instagram: string | null;
+  phone: string | null;
+  address: string | null;
+};
+type OrganizationForm = {
+  name: string;
+  commercial_email: string;
+  whatsapp: string;
+  instagram: string;
+  phone: string;
+  address: string;
+};
 
 type IconName = "home" | "check" | "task" | "team" | "model" | "chart" | "gear" | "search" | "bell" | "plus" | "clock" | "arrow" | "close" | "calendar" | "filter" | "dots";
 
@@ -83,6 +99,7 @@ export default function Home() {
   const [dashboardExecutions,setDashboardExecutions] = useState<DashboardExecution[]>([]);
   const [openNonConformities,setOpenNonConformities] = useState(0);
   const [organizationName,setOrganizationName] = useState("Sua organização");
+  const [organizationDetails,setOrganizationDetails] = useState<OrganizationDetails | null>(null);
   const [profileName,setProfileName] = useState("Usuário");
   const filteredChecklists = useMemo(()=>checklists.filter(checklist=>!query || `${checklist.name} ${checklist.category||""}`.toLowerCase().includes(query.toLowerCase())),[checklists,query]);
   const notify=(msg:string)=>showFeedback(msg);
@@ -116,10 +133,11 @@ export default function Home() {
     setOrganizationId(membership.organization_id);
     setViewerRole(membership.role);
     const [{ data: organization }, { data: profile }] = await Promise.all([
-      supabase.from("organizations").select("name").eq("id", membership.organization_id).maybeSingle(),
+      supabase.from("organizations").select("name,commercial_email,whatsapp,instagram,phone,address").eq("id", membership.organization_id).maybeSingle(),
       supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle(),
     ]);
     setOrganizationName(organization?.name || "Sua organização");
+    setOrganizationDetails(organization as OrganizationDetails | null);
     setProfileName(profile?.full_name || user.email?.split("@")[0] || "Usuário");
     if (membership.role === "collaborator") {
       const { data: assignmentData, error: assignmentError } = await supabase
@@ -257,7 +275,8 @@ export default function Home() {
       {section==="Visão geral" && <Dashboard checklists={filteredChecklists} executions={dashboardExecutions} history={history} nonConformities={openNonConformities} loading={checklistsLoading} error={checklistsError} setSection={setSection}/>}
       {section==="Modelos" && <Models onUse={(n)=>{setModal(true);notify(`Modelo “${n}” selecionado`)}}/>}
       {section==="Equipe e unidades" && <TeamManagement />}
-      {section!=="Visão geral"&&section!=="Modelos"&&section!=="Equipe e unidades"&&<Generic section={section} checklists={filteredChecklists} history={history} loading={checklistsLoading} error={checklistsError} viewerRole={viewerRole}/>}
+      {section==="Configurações"&&<OrganizationSettings organizationId={organizationId} details={organizationDetails} viewerRole={viewerRole} loading={checklistsLoading} loadError={checklistsError} onSaved={details=>{setOrganizationDetails(details);setOrganizationName(details.name);notify("Dados da empresa salvos com sucesso.")}}/>}
+      {section!=="Visão geral"&&section!=="Modelos"&&section!=="Equipe e unidades"&&section!=="Configurações"&&<Generic section={section} checklists={filteredChecklists} history={history} loading={checklistsLoading} error={checklistsError} viewerRole={viewerRole}/>}
     </main>
     {modal&&<CreateModal close={()=>setModal(false)} create={createChecklist}/>}
     <FeedbackMessage feedback={feedback} onClose={clearFeedback}/>
@@ -276,6 +295,30 @@ function Dashboard({checklists,executions,history,nonConformities,loading,error,
 }
 
 function Models({onUse}:{onUse:(n:string)=>void}){return <section><div className="section-toolbar"><div><h2>Modelos para alimentação e eventos</h2><p>Catálogo demonstrativo; a importação dos modelos ainda aguarda homologação.</p></div></div><div className="template-grid">{templates.map(t=><article className="template-card" key={t.title}><div className="template-icon" style={{background:t.color}}>{t.emoji}</div><span className="segment">{t.segment}</span><h3>{t.title}</h3><p>{t.items} itens planejados · ainda não conectado ao banco</p><div><button className="secondary" onClick={()=>onUse(t.title)}>Criar checklist vazio</button></div></article>)}</div></section>}
+
+function OrganizationSettings({organizationId,details,viewerRole,loading,loadError,onSaved}:{organizationId:string;details:OrganizationDetails|null;viewerRole:string;loading:boolean;loadError:string;onSaved:(details:OrganizationDetails)=>void}){
+  const canEdit=viewerRole==="owner";
+  const [form,setForm]=useState<OrganizationForm>({name:"",commercial_email:"",whatsapp:"",instagram:"",phone:"",address:""});
+  const [saving,setSaving]=useState(false);
+  const [error,setError]=useState("");
+  useEffect(()=>{if(details)setForm({name:details.name,commercial_email:details.commercial_email||"",whatsapp:details.whatsapp||"",instagram:details.instagram||"",phone:details.phone||"",address:details.address||""})},[details]);
+  const setField=(field:keyof OrganizationForm)=>(event:React.ChangeEvent<HTMLInputElement>)=>setForm(current=>({...current,[field]:event.target.value}));
+  const save=async(event:React.FormEvent<HTMLFormElement>)=>{
+    event.preventDefault();
+    if(!canEdit||saving)return;
+    const normalized={...form,name:form.name.trim(),commercial_email:form.commercial_email.trim().toLowerCase(),whatsapp:form.whatsapp.trim(),instagram:form.instagram.trim(),phone:form.phone.trim(),address:form.address.trim()};
+    if(!normalized.name){setError("Informe o nome da empresa.");return}
+    if(normalized.commercial_email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized.commercial_email)){setError("Informe um e-mail comercial válido.");return}
+    setSaving(true);setError("");
+    const supabase=await initializeSupabaseBrowserClient();
+    if(!supabase){setSaving(false);setError("Não foi possível salvar os dados da empresa.");return}
+    const {data, error:updateError}=await supabase.from("organizations").update(normalized).eq("id",organizationId).select("name,commercial_email,whatsapp,instagram,phone,address").single();
+    setSaving(false);
+    if(updateError||!data){setError("Não foi possível salvar os dados da empresa.");return}
+    const saved=data as OrganizationDetails;
+    setForm({name:saved.name,commercial_email:saved.commercial_email||"",whatsapp:saved.whatsapp||"",instagram:saved.instagram||"",phone:saved.phone||"",address:saved.address||""});onSaved(saved);
+  };
+  return <section className="organization-settings" aria-labelledby="company-data-title"><div className="section-toolbar"><div><h2 id="company-data-title">Dados da empresa</h2><p>Mantenha os dados de contato da sua organização atualizados.</p></div></div>{loading?<article className="panel"><p className="data-state">Carregando dados da empresa...</p></article>:loadError||!details?<article className="panel"><p className="data-state error">Não foi possível carregar os dados da empresa.</p></article>:<form className="organization-form" onSubmit={save}><label>Nome da empresa<input value={form.name} onChange={setField("name")} readOnly={!canEdit} required /></label><label>E-mail comercial<input type="email" value={form.commercial_email} onChange={setField("commercial_email")} readOnly={!canEdit} /></label><label>WhatsApp<input value={form.whatsapp} onChange={setField("whatsapp")} readOnly={!canEdit} /></label><label>Instagram<input value={form.instagram} onChange={setField("instagram")} readOnly={!canEdit} /></label><label>Telefone <small>Opcional</small><input value={form.phone} onChange={setField("phone")} readOnly={!canEdit} /></label><label>Endereço <small>Opcional</small><input value={form.address} onChange={setField("address")} readOnly={!canEdit} /></label>{!canEdit&&<p className="organization-readonly" role="status">Somente o proprietário da organização pode alterar estes dados.</p>}{error&&<p className="data-state error" role="alert">{error}</p>}{canEdit&&<button className="primary" type="submit" disabled={saving}>{saving?"Salvando...":"Salvar alterações"}</button>}</form>}</section>}
 
 function Generic({section,checklists,history,loading,error,viewerRole}:{section:string;checklists:ChecklistListItem[];history:HistoryItem[];loading:boolean;error:string;viewerRole:string}){const operationStatus=(checklist:ChecklistListItem)=>checklist.execution_status==="completed"?"Concluído":checklist.execution_status==="paused"?"Continuar":checklist.execution_status==="in_progress"?"Em execução":"Iniciar";const realSection=section==="Operação"||section==="Histórico";return <section><div className="section-toolbar"><div><h2>{section}</h2><p>{section==="Operação"?(viewerRole==="collaborator"?"Checklists atribuídos a você, com o status real da execução.":"Checklists reais da sua organização, prontos para editar e atribuir."):section==="Histórico"?"Execuções concluídas registradas no Supabase.":"Esta área ainda não foi homologada e não exibe dados simulados."}</p></div></div><article className="data-panel">{realSection&&<div className="data-head"><span>Nome</span><span>{section==="Histórico"?"Executor":"Categoria"}</span><span>{section==="Histórico"?"Conclusão":"Status"}</span><span></span></div>}{section==="Operação" ? <>{loading&&<p className="data-state">Carregando checklists...</p>}{error&&<p className="data-state error">{error} <button className="retry-link" onClick={()=>window.location.reload()}>Tentar novamente</button></p>}{!loading&&!error&&checklists.length===0&&<p className="data-state">{viewerRole==="collaborator"?"Nenhum checklist atribuído a você.":"Nenhum checklist criado nesta organização."}</p>}{checklists.map((checklist)=><button className="data-row" key={checklist.assignment_id||checklist.id} onClick={()=>{window.location.href=viewerRole==="collaborator"&&checklist.assignment_id?`/executions/${checklist.assignment_id}`:`/checklists/${checklist.id}`}}><span><i className="file-icon"><Icon name="check" size={19}/></i><strong>{checklist.name}</strong></span><span>{checklist.category || "Sem categoria"}</span><span className={`status ${checklist.execution_status==="completed"?"completed-label":""}`}>{checklist.execution_status?operationStatus(checklist):checklist.status==="draft"?"Rascunho":"Ativo"}</span><Icon name="arrow"/></button>)}</> : section==="Histórico" ? <>{loading&&<p className="data-state">Carregando histórico...</p>}{error&&<p className="data-state error">{error} <button className="retry-link" onClick={()=>window.location.reload()}>Tentar novamente</button></p>}{!loading&&!error&&history.length===0&&<p className="data-state">Nenhuma execução concluída.</p>}{history.map(record=><button className="data-row history-row" key={record.id} onClick={()=>{window.location.href=`/history/${record.id}`}}><span><i className="file-icon"><Icon name="calendar" size={19}/></i><strong>{record.checklist_name}</strong></span><span>{record.executor_name}</span><span className="status completed-label">{new Date(record.completed_at).toLocaleString("pt-BR")} · {record.conformity_percentage??0}%</span><Icon name="arrow"/></button>)}</> : <div className="module-pending"><Icon name="clock" size={28}/><h3>Homologação pendente</h3><p>Este módulo permanece no escopo do MVP, mas ainda não está conectado ao banco. Nenhuma informação fictícia é exibida.</p></div>}</article></section>}
 
