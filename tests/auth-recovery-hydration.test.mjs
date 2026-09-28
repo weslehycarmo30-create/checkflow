@@ -56,6 +56,8 @@ test("recovery URL hydrates deterministically and then shows the reset form", { 
     const response = await page.goto(`${origin}/auth?mode=reset#type=recovery`, { waitUntil: "networkidle" });
     assert.equal(response?.status(), 200);
     await expectResetForm(page);
+    await page.getByRole("button", { name: "Voltar ao login" }).click();
+    assert.equal(await page.getByRole("heading", { name: "Entrar" }).isVisible(), true);
     assert.deepEqual(hydrationFailures, []);
   } finally {
     await browser.close();
