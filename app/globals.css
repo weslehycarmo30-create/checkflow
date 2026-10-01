@@ -10,6 +10,21 @@
 @media(max-width:1180px){.dashboard-grid{grid-template-columns:1fr}.kpi-grid{grid-template-columns:repeat(2,1fr)}.template-grid{grid-template-columns:repeat(2,1fr)}.search{display:none}}
 @media(max-width:760px){.mobile-menu{display:block;position:fixed;z-index:30;left:15px;top:15px;width:40px;height:40px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);font-size:20px}.sidebar{transform:translateX(-105%);transition:.22s}.sidebar.open{transform:translateX(0);box-shadow:15px 0 40px #14313d33}.main{margin-left:0;padding:72px 15px 30px}header{align-items:flex-start}.eyebrow{display:none}h1{font-size:25px}.subtitle{font-size:12px}.header-actions .iconbtn,.main-avatar{display:none}.primary{padding:0 12px}.header-actions>.primary svg{display:none}.kpi-grid{grid-template-columns:1fr 1fr;gap:10px}.kpi{padding:14px;grid-template-columns:42px 1fr}.kpi-icon{width:42px;height:42px}.kpi strong{font-size:25px}.kpi small em{display:none}.dashboard-grid{display:block}.right-stack{margin-top:14px}.panel{padding:17px 14px}.task-head{display:none}.task-row{grid-template-columns:29px 1fr 65px;min-height:74px}.task-row .owner{display:none}.task-row .time{grid-column:3}.segmented{overflow-x:auto}.segmented button{padding:7px 9px}.chart{height:190px}.bar-col i{width:20px}.recent-row{grid-template-columns:36px 1fr 46px 15px}.template-grid{grid-template-columns:1fr}.section-toolbar{align-items:flex-start;gap:15px}.section-toolbar>div:last-child .secondary{display:none}.data-head{display:none}.data-row{grid-template-columns:1fr 70px 25px;padding:0 14px}.data-row>span:nth-child(2){display:none}.toast{left:15px;right:15px;bottom:15px}.modal{padding:24px}.main>header .header-actions{align-self:center}}
 @media(max-width:430px){.kpi-grid{grid-template-columns:1fr}.section-toolbar p{display:none}.section-toolbar h2{font-size:18px}.primary{font-size:12px}}
+
+/* Official CheckFlow artwork: retain the supplied proportions and dark field. */
+.checkflow-brand-logo{display:inline-flex;align-items:center;vertical-align:middle;line-height:0}
+.checkflow-brand-logo-wide,.checkflow-brand-logo-symbol{display:block;height:auto;max-width:100%}
+.checkflow-brand-logo-symbol{display:none}
+.marketing-brand{width:176px;flex:0 0 176px;line-height:0}
+.marketing-brand .checkflow-brand-logo{width:100%}
+.marketing-brand img{width:100%;height:auto}
+.auth-brand{width:164px;margin:0 0 28px;line-height:0}
+.auth-brand .checkflow-brand-logo{width:100%}
+.auth-brand img{width:100%;height:auto}
+.brand{width:190px;height:auto;min-height:57px;margin:0 0 34px 0;flex:0 0 auto}
+.brand .checkflow-brand-logo{width:100%}
+.brand img{width:100%;height:auto}
+@media(max-width:360px){.marketing-brand.compact-on-mobile .checkflow-brand-logo-wide{display:none}.marketing-brand.compact-on-mobile .checkflow-brand-logo-symbol{display:block;width:42px}.marketing-brand.compact-on-mobile{width:48px;flex-basis:48px}}
 .kpi{width:100%;color:var(--ink);font:inherit;text-align:left;cursor:pointer}.kpi:hover{border-color:#bdd9dd;background:#fbfefe}.kpi:focus-visible{outline:3px solid #7fc7ca;outline-offset:3px}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
