@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ThemeToggle } from "./theme-toggle";
+import { RegisterServiceWorker } from "../components/register-service-worker";
 import "./globals.css";
 
 const themeInitializationScript = `
@@ -32,7 +33,10 @@ export const metadata: Metadata = {
   icons: {
     icon: [{ url: "/favicon.png", type: "image/png", sizes: "256x256" }],
     shortcut: "/favicon.png",
+    apple: [{ url: "/brand/checkflow-apple-180.png", sizes: "180x180", type: "image/png" }],
   },
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, title: "CheckFlow", statusBarStyle: "black-translucent" },
 };
 
 export default function RootLayout({
@@ -47,6 +51,7 @@ export default function RootLayout({
       </head>
       <body className="antialiased">
         <ThemeToggle />
+        <RegisterServiceWorker />
         {children}
       </body>
     </html>

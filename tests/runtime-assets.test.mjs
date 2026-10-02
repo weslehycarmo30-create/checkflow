@@ -58,6 +58,20 @@ test("production runtime serves stylesheet and critical JavaScript instead of an
     assert.equal(js.headers.get("x-checkflow-local-build"), buildId);
     assert.match(js.headers.get("content-type") ?? "", /javascript/);
     assert.ok((await js.text()).length > 100);
+
+    const pwaManifestResponse = await fetch(`${origin}/manifest.webmanifest`);
+    assert.equal(pwaManifestResponse.status, 200);
+    assert.match(pwaManifestResponse.headers.get("content-type") ?? "", /^application\/manifest\+json/);
+    const pwaManifest = await pwaManifestResponse.json();
+    assert.equal(pwaManifest.name, "CheckFlow");
+    for (const icon of pwaManifest.icons) assert.equal((await fetch(`${origin}${icon.src}`)).status, 200);
+    assert.equal((await fetch(`${origin}/brand/checkflow-apple-180.png`)).status, 200);
+    assert.equal((await fetch(`${origin}/favicon.png`)).status, 200);
+    const serviceWorkerResponse = await fetch(`${origin}/sw.js`);
+    assert.equal(serviceWorkerResponse.status, 200);
+    assert.match(serviceWorkerResponse.headers.get("content-type") ?? "", /javascript/);
+    assert.equal((await serviceWorkerResponse.text()).includes("caches."), false);
+
     assert.equal((await fetch(`${origin}/auth`)).status, 200);
     assert.equal((await fetch(`${origin}/dashboard`)).status, 200);
   } finally {

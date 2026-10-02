@@ -25,6 +25,15 @@
 .brand .checkflow-brand-logo{width:100%}
 .brand img{width:100%;height:auto}
 @media(max-width:360px){.marketing-brand.compact-on-mobile .checkflow-brand-logo-wide{display:none}.marketing-brand.compact-on-mobile .checkflow-brand-logo-symbol{display:block;width:42px}.marketing-brand.compact-on-mobile{width:48px;flex-basis:48px}}
+.pwa-install-slot{position:relative;min-height:0;display:flex;align-items:center}
+.pwa-install-button{min-height:42px;padding:0 13px;border:1px solid #8fc1c5;border-radius:9px;background:transparent;color:#087886;font:inherit;font-size:12px;font-weight:750;cursor:pointer}
+.pwa-install-button:hover{background:#eaf5f5}
+.pwa-install-button:focus-visible{outline:3px solid #7fc7ca;outline-offset:3px}
+.pwa-install-instructions{position:absolute;z-index:5;max-width:300px;margin:8px 0 0;padding:12px 14px;border:1px solid #cfe1e4;border-radius:10px;background:#fff;color:#294650;box-shadow:0 10px 24px #102d391c;font-size:12px;line-height:1.5}
+@media(max-width:600px){.pwa-install-slot{width:100%}.pwa-install-button{width:100%}}
+[data-theme="dark"] .pwa-install-button{border-color:#4f8187;color:#9ad8da}
+[data-theme="dark"] .pwa-install-button:hover{background:#172b31}
+[data-theme="dark"] .pwa-install-instructions{border-color:#3b5158;background:#17252b;color:#e4f2f4}
 .kpi{width:100%;color:var(--ink);font:inherit;text-align:left;cursor:pointer}.kpi:hover{border-color:#bdd9dd;background:#fbfefe}.kpi:focus-visible{outline:3px solid #7fc7ca;outline-offset:3px}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 

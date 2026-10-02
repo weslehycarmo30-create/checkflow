@@ -20,6 +20,7 @@ const contentTypes = {
   ".css": "text/css; charset=utf-8", ".js": "application/javascript; charset=utf-8",
   ".mjs": "application/javascript; charset=utf-8", ".svg": "image/svg+xml",
   ".woff2": "font/woff2", ".json": "application/json; charset=utf-8",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
 };
 
 async function staticFile(pathname) {
