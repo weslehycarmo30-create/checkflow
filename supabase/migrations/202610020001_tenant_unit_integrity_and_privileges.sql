@@ -2,6 +2,107 @@
 -- Existing rows are deliberately not rewritten or validated by this migration.
 -- Run the read-only p1_tenant_unit_integrity_preflight before any production rollout.
 
+-- Serialize changes against the identity they validate. Every participating
+-- trigger takes these transaction-scoped advisory locks in lexical key order:
+-- assignment, checklist, execution, then unit. This closes races where a parent
+-- or unit is moved while a child row validates against the old committed state.
+create or replace function public.lock_checkflow_tenant_link_keys()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  lock_keys text[] := array[]::text[];
+  lock_key text;
+begin
+  if tg_table_name = 'units' then
+    lock_keys := pg_catalog.array_append(lock_keys, 'unit:' || new.id::text);
+  elsif tg_table_name in ('teams', 'checklists') then
+    if tg_table_name = 'checklists' then
+      lock_keys := pg_catalog.array_append(lock_keys, 'checklist:' || new.id::text);
+    end if;
+    if new.unit_id is not null then
+      lock_keys := pg_catalog.array_append(lock_keys, 'unit:' || new.unit_id::text);
+    end if;
+  elsif tg_table_name = 'checklist_assignments' then
+    lock_keys := pg_catalog.array_append(lock_keys, 'assignment:' || new.id::text);
+    lock_keys := pg_catalog.array_append(lock_keys, 'checklist:' || new.checklist_id::text);
+    if new.unit_id is not null then
+      lock_keys := pg_catalog.array_append(lock_keys, 'unit:' || new.unit_id::text);
+    end if;
+    if tg_op = 'UPDATE' then
+      lock_keys := pg_catalog.array_append(lock_keys, 'checklist:' || old.checklist_id::text);
+    end if;
+  elsif tg_table_name = 'checklist_executions' then
+    lock_keys := pg_catalog.array_append(lock_keys, 'execution:' || new.id::text);
+    lock_keys := pg_catalog.array_append(lock_keys, 'checklist:' || new.checklist_id::text);
+    if new.assignment_id is not null then
+      lock_keys := pg_catalog.array_append(lock_keys, 'assignment:' || new.assignment_id::text);
+    end if;
+    if new.unit_id is not null then
+      lock_keys := pg_catalog.array_append(lock_keys, 'unit:' || new.unit_id::text);
+    end if;
+    if tg_op = 'UPDATE' then
+      lock_keys := pg_catalog.array_append(lock_keys, 'checklist:' || old.checklist_id::text);
+      if old.assignment_id is not null then
+        lock_keys := pg_catalog.array_append(lock_keys, 'assignment:' || old.assignment_id::text);
+      end if;
+    end if;
+  elsif tg_table_name = 'non_conformities' then
+    lock_keys := pg_catalog.array_append(lock_keys, 'execution:' || new.execution_id::text);
+    if new.unit_id is not null then
+      lock_keys := pg_catalog.array_append(lock_keys, 'unit:' || new.unit_id::text);
+    end if;
+    if tg_op = 'UPDATE' then
+      lock_keys := pg_catalog.array_append(lock_keys, 'execution:' || old.execution_id::text);
+    end if;
+  end if;
+
+  for lock_key in
+    select distinct k from pg_catalog.unnest(lock_keys) as keys(k) order by k
+  loop
+    perform pg_catalog.pg_advisory_xact_lock(
+      pg_catalog.hashtextextended('checkflow:' || lock_key, 0)
+    );
+  end loop;
+
+  return case when tg_op = 'DELETE' then old else new end;
+end
+$$;
+
+revoke execute on function public.lock_checkflow_tenant_link_keys() from public, anon, authenticated, service_role;
+
+drop trigger if exists aa_lock_checkflow_tenant_link_keys on public.teams;
+create trigger aa_lock_checkflow_tenant_link_keys
+before insert or update of organization_id, unit_id on public.teams
+for each row execute function public.lock_checkflow_tenant_link_keys();
+
+drop trigger if exists aa_lock_checkflow_tenant_link_keys on public.checklists;
+create trigger aa_lock_checkflow_tenant_link_keys
+before insert or update of organization_id, unit_id on public.checklists
+for each row execute function public.lock_checkflow_tenant_link_keys();
+
+drop trigger if exists aa_lock_checkflow_tenant_link_keys on public.checklist_assignments;
+create trigger aa_lock_checkflow_tenant_link_keys
+before insert or update of organization_id, checklist_id, unit_id, assigned_to, active on public.checklist_assignments
+for each row execute function public.lock_checkflow_tenant_link_keys();
+
+drop trigger if exists aa_lock_checkflow_tenant_link_keys on public.checklist_executions;
+create trigger aa_lock_checkflow_tenant_link_keys
+before insert or update of organization_id, assignment_id, checklist_id, unit_id on public.checklist_executions
+for each row execute function public.lock_checkflow_tenant_link_keys();
+
+drop trigger if exists aa_lock_checkflow_tenant_link_keys on public.non_conformities;
+create trigger aa_lock_checkflow_tenant_link_keys
+before insert or update of organization_id, execution_id, unit_id on public.non_conformities
+for each row execute function public.lock_checkflow_tenant_link_keys();
+
+drop trigger if exists aa_lock_checkflow_tenant_link_keys on public.units;
+create trigger aa_lock_checkflow_tenant_link_keys
+before update of organization_id on public.units
+for each row execute function public.lock_checkflow_tenant_link_keys();
+
 create or replace function public.validate_checkflow_unit_tenant_integrity()
 returns trigger
 language plpgsql
@@ -15,6 +116,24 @@ declare
   unit_org uuid;
 begin
   if tg_table_name in ('teams', 'checklists') then
+    if tg_table_name = 'checklists'
+       and tg_op = 'UPDATE'
+       and new.organization_id is distinct from old.organization_id
+       and (
+         exists (
+           select 1 from public.checklist_assignments
+           where checklist_id = old.id
+             and organization_id is distinct from new.organization_id
+         )
+         or exists (
+           select 1 from public.checklist_executions
+           where checklist_id = old.id
+             and organization_id is distinct from new.organization_id
+         )
+       ) then
+      raise exception 'A organização de um checklist referenciado não pode ser alterada';
+    end if;
+
     if new.unit_id is null then
       return new;
     end if;
@@ -24,6 +143,22 @@ begin
 
     if not found or unit_org is distinct from new.organization_id then
       raise exception 'A unidade não pertence à organização do registro';
+    end if;
+    return new;
+  end if;
+
+  if tg_table_name = 'checklist_assignments' then
+    -- The older identity guard runs before the serialization trigger. Recheck
+    -- after taking the assignment lock so a concurrent execution insert cannot
+    -- make its initial existence test stale.
+    if tg_op = 'UPDATE'
+       and (new.id, new.organization_id, new.checklist_id, new.assigned_to, new.unit_id)
+           is distinct from
+           (old.id, old.organization_id, old.checklist_id, old.assigned_to, old.unit_id)
+       and exists (
+         select 1 from public.checklist_executions where assignment_id = old.id
+       ) then
+      raise exception 'A identidade de uma atribuição iniciada é imutável';
     end if;
     return new;
   end if;
@@ -95,6 +230,11 @@ for each row execute function public.validate_checkflow_unit_tenant_integrity();
 drop trigger if exists validate_checkflow_unit_tenant_integrity on public.checklists;
 create trigger validate_checkflow_unit_tenant_integrity
 before insert or update of organization_id, unit_id on public.checklists
+for each row execute function public.validate_checkflow_unit_tenant_integrity();
+
+drop trigger if exists validate_checkflow_unit_tenant_integrity on public.checklist_assignments;
+create trigger validate_checkflow_unit_tenant_integrity
+before insert or update of organization_id, checklist_id, unit_id, assigned_to, active on public.checklist_assignments
 for each row execute function public.validate_checkflow_unit_tenant_integrity();
 
 drop trigger if exists validate_checkflow_unit_tenant_integrity on public.checklist_executions;
