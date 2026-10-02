@@ -18,7 +18,7 @@ type Checklist = {
 type Item = { id: string; prompt: string; answer_type: string; required: boolean; position: number };
 type Section = { id: string; title: string; position: number; checklist_items: Item[] };
 type Member = { user_id: string; role: string; full_name: string };
-type Unit = { id: string; name: string };
+type Unit = { id: string; name: string; active: boolean };
 type Assignment = {
   id: string;
   assigned_to: string;
@@ -115,7 +115,7 @@ clearFeedback();
       supabase.from("organization_members").select("role").eq("organization_id", current.organization_id).eq("user_id", user.id).eq("active", true).maybeSingle(),
       supabase.from("checklist_sections").select("id,title,position,checklist_items(id,prompt,answer_type,required,position)").eq("checklist_id", checklistId).order("position"),
       supabase.from("organization_members").select("user_id,role").eq("organization_id", current.organization_id).eq("active", true),
-      supabase.from("units").select("id,name").eq("organization_id", current.organization_id).eq("active", true).order("name"),
+      supabase.from("units").select("id,name,active").eq("organization_id", current.organization_id).order("name"),
       supabase.from("checklist_assignments").select("id,assigned_to,unit_id,due_at,active").eq("checklist_id", checklistId).eq("active", true).order("created_at"),
       supabase.from("checklist_executions").select("id").eq("checklist_id", checklistId).limit(1),
     ]);
@@ -133,7 +133,7 @@ clearFeedback();
     setMembers((memberData || []).map(member => ({ ...member, full_name: names.get(member.user_id) || "Usuário" })));
     const loadedUnits = (unitData || []) as Unit[];
     const unitNames = new Map(loadedUnits.map(unit => [unit.id, unit.name]));
-    setUnits(loadedUnits);
+    setUnits(loadedUnits.filter(unit => unit.active));
     if (assignmentLoadError) setError(assignmentLoadError.message);
     if (executionLoadError) setError(executionLoadError.message);
     setStructureCheckError(Boolean(assignmentLoadError || executionLoadError));
