@@ -4,6 +4,7 @@ begin;
 
 grant usage on schema public to authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;
+revoke delete on public.units from authenticated;
 
 insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
 values
@@ -102,6 +103,12 @@ do $$ begin
   if has_table_privilege('anon','public.units','TRUNCATE') then raise exception 'anon retains TRUNCATE on units'; end if;
   if has_table_privilege('authenticated','public.checklist_executions','TRUNCATE') then raise exception 'authenticated retains TRUNCATE on executions'; end if;
   if not has_table_privilege('authenticated','public.units','INSERT') then raise exception 'authenticated unit INSERT was revoked'; end if;
+  if has_table_privilege('anon','public.units','DELETE') then raise exception 'anon retains DELETE on units'; end if;
+  if has_table_privilege('authenticated','public.units','DELETE') then raise exception 'authenticated retains DELETE on units'; end if;
+  if exists (
+    select 1 from pg_policies
+    where schemaname='public' and tablename='units' and cmd in ('ALL','DELETE')
+  ) then raise exception 'units still has an ALL or DELETE policy'; end if;
   if exists (
     select 1 from pg_default_acl d cross join lateral aclexplode(d.defaclacl) acl
     where d.defaclnamespace='public'::regnamespace and d.defaclobjtype='r'
@@ -114,6 +121,34 @@ do $$ begin
       and (has_table_privilege('anon',c.oid,'TRUNCATE') or has_table_privilege('authenticated',c.oid,'TRUNCATE'))
   ) then raise exception 'an existing public table still grants TRUNCATE'; end if;
 end $$;
+
+-- Temporarily grant DELETE inside this rolled-back test transaction so the
+-- owner/manager/collaborator assertions prove that RLS also blocks hard delete.
+grant delete on public.units to authenticated;
+set local role authenticated;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-00000000a351',true);
+do $$ declare affected integer; begin
+  delete from public.units where id='20000000-0000-0000-0000-00000000a354';
+  get diagnostics affected = row_count;
+  if affected <> 0 then raise exception 'owner deleted a unit directly'; end if;
+  if not exists(select 1 from public.units where id='20000000-0000-0000-0000-00000000a354') then raise exception 'owner delete removed a unit'; end if;
+end $$;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-00000000a352',true);
+do $$ declare affected integer; begin
+  delete from public.units where id='20000000-0000-0000-0000-00000000a354';
+  get diagnostics affected = row_count;
+  if affected <> 0 then raise exception 'manager deleted a unit directly'; end if;
+  if not exists(select 1 from public.units where id='20000000-0000-0000-0000-00000000a354') then raise exception 'manager delete removed a unit'; end if;
+end $$;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-00000000a353',true);
+do $$ declare affected integer; begin
+  delete from public.units where id='20000000-0000-0000-0000-00000000a354';
+  get diagnostics affected = row_count;
+  if affected <> 0 then raise exception 'collaborator deleted a unit directly'; end if;
+  if not exists(select 1 from public.units where id='20000000-0000-0000-0000-00000000a354') then raise exception 'collaborator delete removed a unit'; end if;
+end $$;
+reset role;
+revoke delete on public.units from authenticated;
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-00000000a351',true);
