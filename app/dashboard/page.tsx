@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { SupabaseConnectionStatus } from "../supabase-connection-status";
 import { PrivateRouteGuard } from "../private-route-guard";
 import { LogoutButton } from "../logout-button";
@@ -75,18 +75,69 @@ function Icon({name, size=20}:{name:IconName,size?:number}) { return <svg width=
 const nav = [
   ["Visão geral","home"],["Operação","check"],["Modelos","model"],["Planos de ação","task"],["Histórico","calendar"],["Equipe e unidades","team"],["Relatórios","chart"]
 ] as const;
-const templates = [
+type ChecklistTemplateItem = {
+  prompt: string;
+  answer_type: "yes_no" | "number";
+  required: boolean;
+  nonconformity_on_no?: boolean;
+  require_observation_on_failure?: boolean;
+};
+type ChecklistTemplateSection = { title: string; items: ChecklistTemplateItem[] };
+type ChecklistTemplate = {
+  emoji: string;
+  title: string;
+  segment: string;
+  items: number;
+  color: string;
+  category?: string;
+  sections?: ChecklistTemplateSection[];
+};
+const templates: ChecklistTemplate[] = [
   {emoji:"🍸", title:"Abertura do bar", segment:"Bares e bartender", items:18, color:"#e8f4ff"},
   {emoji:"🧊", title:"Estação de bartender para evento", segment:"Eventos", items:24, color:"#fff2df"},
   {emoji:"🧼", title:"Higienização de cozinha", segment:"Cozinha profissional", items:16, color:"#e8fbf4"},
   {emoji:"🌡️", title:"Controle de temperatura", segment:"Segurança alimentar", items:12, color:"#f0ecff"},
-  {emoji:"🍽️", title:"Montagem e desmontagem de buffet", segment:"Buffets", items:21, color:"#e9f7f8"},
+  {
+    emoji:"🍽️", title:"Montagem e desmontagem de buffet", segment:"Buffets", category:"Buffet", items:21, color:"#e9f7f8",
+    sections:[
+      {title:"Preparação da área",items:[
+        {prompt:"A área do buffet está limpa e higienizada?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"Mesas e superfícies estão estáveis e em boas condições?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"Os equipamentos necessários para o serviço estão disponíveis e íntegros?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"Os utensílios de serviço estão limpos e disponíveis?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"O ponto de higienização das mãos está abastecido para a equipe?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true}
+      ]},
+      {title:"Montagem e apresentação",items:[
+        {prompt:"As preparações estão organizadas conforme o fluxo de serviço?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"Cada preparação possui utensílio de serviço próprio?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"As preparações estão identificadas com seus nomes?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"As informações de alergênicos disponíveis para o serviço estão visíveis?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"As preparações estão protegidas contra contaminação externa?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"A disposição do buffet permite circulação segura de clientes e equipe?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true}
+      ]},
+      {title:"Segurança e temperatura",items:[
+        {prompt:"Registre a temperatura de uma preparação quente selecionada.",answer_type:"number",required:true},
+        {prompt:"Registre a temperatura de uma preparação fria selecionada.",answer_type:"number",required:true},
+        {prompt:"As preparações quentes estão mantidas nos equipamentos previstos pela operação?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"As preparações frias estão mantidas nos equipamentos previstos pela operação?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"As etiquetas e prazos das preparações estão de acordo com o procedimento interno?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"As preparações expostas estão dentro do tempo de serviço definido pela operação?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true}
+      ]},
+      {title:"Desmontagem e encerramento",items:[
+        {prompt:"As sobras foram destinadas conforme o procedimento interno de armazenamento ou descarte?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"Os alimentos mantidos foram acondicionados em recipientes fechados e identificados?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"As superfícies e os equipamentos foram limpos e higienizados após o serviço?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"Os utensílios foram recolhidos e guardados no local adequado?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true}
+      ]}
+    ]
+  },
   {emoji:"🔒", title:"Fechamento do restaurante", segment:"Restaurantes", items:20, color:"#fff0ee"}
 ];
 
 export default function Home() {
   const [section,setSection] = useState("Visão geral");
   const [modal,setModal] = useState(false);
+  const [selectedTemplate,setSelectedTemplate] = useState<ChecklistTemplate | null>(null);
   const { feedback, showFeedback, clearFeedback } = useFeedback();
   const [query,setQuery] = useState("");
   const [mobile,setMobile] = useState(false);
@@ -234,33 +285,103 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadChecklists();
   },[]);
-  const createChecklist = async (name:string, category:string) => {
+  const closeCreateModal = () => { setModal(false); setSelectedTemplate(null); };
+  const createChecklist = async (name:string, category:string, template?:ChecklistTemplate) => {
+    const totalTemplateItems = template?.sections?.reduce((total, section) => total + section.items.length, 0) ?? 0;
+    if (template && (!template.sections?.length || totalTemplateItems !== template.items)) {
+      setChecklistsError("A estrutura do modelo está incompleta e não foi criada.");
+      notify("Não foi possível criar o checklist a partir deste modelo.");
+      return;
+    }
     const supabase = await initializeSupabaseBrowserClient();
     if (!supabase || !organizationId || !userId) {
       setChecklistsError("Não foi possível identificar usuário e organização.");
-      return;
-    }
-    const { data, error } = await supabase
-      .from("checklists")
-      .insert({
-        organization_id: organizationId,
-        name: name.trim(),
-        category,
-        status: "draft",
-        is_template: false,
-        created_by: userId,
-      })
-      .select("id,name,category,status,organization_id,created_by")
-      .single();
-    if (error) {
-      setChecklistsError(error.message);
       notify("Não foi possível criar o checklist.");
       return;
     }
-    setChecklists(current => [data as ChecklistListItem, ...current]);
-    setModal(false);
-    setSection("Operação");
-    notify(`Checklist “${name}” criado com sucesso!`);
+    setChecklistsError("");
+    let createdChecklist: ChecklistListItem;
+    try {
+      const { data, error } = await supabase
+        .from("checklists")
+        .insert({
+          organization_id: organizationId,
+          name: name.trim(),
+          category,
+          status: "draft",
+          is_template: false,
+          created_by: userId,
+        })
+        .select("id,name,category,status,organization_id,created_by")
+        .single();
+      if (error || !data) {
+        setChecklistsError(error?.message || "O checklist não foi persistido.");
+        notify("Não foi possível criar o checklist.");
+        return;
+      }
+      createdChecklist = data as ChecklistListItem;
+    } catch (error) {
+      setChecklistsError(error instanceof Error ? error.message : "Falha ao criar checklist.");
+      notify("Não foi possível confirmar a criação. Verifique Operação antes de tentar novamente.");
+      return;
+    }
+    const finishCreation = (message:string) => {
+      setChecklists(current => [createdChecklist, ...current]);
+      setModal(false);
+      setSelectedTemplate(null);
+      setSection("Operação");
+      notify(message);
+    };
+    if (template?.sections?.length) {
+      try {
+        const sectionRows = template.sections.map((section, position) => ({
+          organization_id: organizationId,
+          checklist_id: createdChecklist.id,
+          title: section.title,
+          position,
+          created_by: userId,
+        }));
+        const { data: savedSections, error: sectionError } = await supabase
+          .from("checklist_sections")
+          .insert(sectionRows)
+          .select("id,position");
+        if (sectionError || !savedSections || savedSections.length !== sectionRows.length) {
+          setChecklistsError(sectionError?.message || "Nem todas as seções do modelo foram persistidas.");
+          finishCreation("Checklist criado parcialmente. Abra-o em Operação para revisar as seções.");
+          return;
+        }
+        const sectionIds = new Map(savedSections.map(section => [section.position, section.id]));
+        const itemRows = template.sections.flatMap((section, sectionPosition) => {
+          const sectionId = sectionIds.get(sectionPosition);
+          if (!sectionId) throw new Error("Não foi possível associar os itens às seções do modelo.");
+          return section.items.map((item, position) => ({
+            organization_id: organizationId,
+            section_id: sectionId,
+            prompt: item.prompt,
+            answer_type: item.answer_type,
+            required: item.required,
+            position,
+            nonconformity_on_no: item.nonconformity_on_no ?? item.answer_type === "yes_no",
+            require_observation_on_failure: item.require_observation_on_failure ?? item.answer_type === "yes_no",
+            created_by: userId,
+          }));
+        });
+        const { data: savedItems, error: itemError } = await supabase
+          .from("checklist_items")
+          .insert(itemRows)
+          .select("id");
+        if (itemError || !savedItems || savedItems.length !== template.items) {
+          setChecklistsError(itemError?.message || "Nem todos os itens do modelo foram persistidos.");
+          finishCreation("Checklist criado parcialmente. Abra-o em Operação para revisar os itens.");
+          return;
+        }
+      } catch (error) {
+        setChecklistsError(error instanceof Error ? error.message : "Falha ao persistir a estrutura do modelo.");
+        finishCreation("Checklist criado parcialmente. Abra-o em Operação para revisar sua estrutura.");
+        return;
+      }
+    }
+    finishCreation(template ? `Checklist criado com ${template.items} itens do modelo.` : `Checklist “${name}” criado com sucesso!`);
   };
   return <div className="app-shell">
     <PrivateRouteGuard />
@@ -272,14 +393,14 @@ export default function Home() {
     </aside>
     <main className="main">
       <SupabaseConnectionStatus />
-      <header><div><p className="eyebrow">OPERAÇÃO · {organizationName.toUpperCase()}</p><h1>{section==="Visão geral"?`Olá, ${profileName.split(" ")[0]}`:section}</h1><p className="subtitle">{section==="Visão geral"?"Acompanhe os dados operacionais registrados no sistema.":"Rotinas simples, responsáveis definidos e tudo registrado."}</p></div><div className="header-actions"><label className="search"><Icon name="search" size={18}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar checklist..."/></label><LogoutButton/>{viewerRole&&viewerRole!=="collaborator"&&<button className="primary" onClick={()=>setModal(true)}><Icon name="plus" size={18}/>Novo checklist</button>}</div></header>
+      <header><div><p className="eyebrow">OPERAÇÃO · {organizationName.toUpperCase()}</p><h1>{section==="Visão geral"?`Olá, ${profileName.split(" ")[0]}`:section}</h1><p className="subtitle">{section==="Visão geral"?"Acompanhe os dados operacionais registrados no sistema.":"Rotinas simples, responsáveis definidos e tudo registrado."}</p></div><div className="header-actions"><label className="search"><Icon name="search" size={18}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar checklist..."/></label><LogoutButton/>{viewerRole&&viewerRole!=="collaborator"&&<button className="primary" onClick={()=>{setSelectedTemplate(null);setModal(true)}}><Icon name="plus" size={18}/>Novo checklist</button>}</div></header>
       {section==="Visão geral" && <Dashboard checklists={filteredChecklists} executions={dashboardExecutions} history={history} nonConformities={openNonConformities} loading={checklistsLoading} error={checklistsError} setSection={setSection}/>}
-      {section==="Modelos" && <Models onUse={(n)=>{setModal(true);notify(`Modelo “${n}” selecionado`)}}/>}
+      {section==="Modelos" && <Models onUse={(template)=>{setSelectedTemplate(template.sections?.length?template:null);setModal(true);if(!template.sections?.length)notify(`Modelo “${template.title}” ainda não tem estrutura carregada; será criado checklist vazio.`)}}/>}
       {section==="Equipe e unidades" && <TeamManagement organizationId={organizationId} />}
       {section==="Configurações"&&<OrganizationSettings organizationId={organizationId} details={organizationDetails} viewerRole={viewerRole} loading={checklistsLoading} loadError={checklistsError} onSaved={details=>{setOrganizationDetails(details);setOrganizationName(details.name);notify("Dados da empresa salvos com sucesso.")}}/>}
       {section!=="Visão geral"&&section!=="Modelos"&&section!=="Equipe e unidades"&&section!=="Configurações"&&<Generic section={section} checklists={filteredChecklists} history={history} loading={checklistsLoading} error={checklistsError} viewerRole={viewerRole}/>}
     </main>
-    {modal&&<CreateModal close={()=>setModal(false)} create={createChecklist}/>}
+    {modal&&<CreateModal close={closeCreateModal} create={createChecklist} template={selectedTemplate}/>}
     <FeedbackMessage feedback={feedback} onClose={clearFeedback}/>
   </div>
 }
@@ -295,8 +416,8 @@ function Dashboard({checklists,executions,history,nonConformities,loading,error,
  <article className="panel recent"><div className="panel-head"><div><h2>Conclusões recentes</h2><p>Histórico persistido no Supabase</p></div><button className="text-link" onClick={()=>setSection("Histórico")}>Ver histórico</button></div>{history.length===0?<p className="data-state">Nenhuma execução concluída.</p>:history.slice(0,5).map(record=><button className="recent-row" key={record.id} onClick={()=>{window.location.href=`/history/${record.id}`}}><span className="recent-icon"><Icon name="calendar"/></span><span><strong>{record.checklist_name}</strong><small>{record.executor_name} · {new Date(record.completed_at).toLocaleString("pt-BR")}</small></span><span className="status">{record.conformity_percentage??0}%</span><Icon name="arrow" size={16}/></button>)}</article></section></>}</>
 }
 
-function Models({onUse}:{onUse:(n:string)=>void}){return <section><div className="section-toolbar"><div><h2>Modelos para alimentação e eventos</h2><p>Catálogo demonstrativo; a importação dos modelos ainda aguarda homologação.</p></div></div><div className="template-grid">{templates.map(t=><article className="template-card" key={t.title}><div className="template-icon" style={{background:t.color}}>{t.emoji}</div><span className="segment">{t.segment}</span><h3>{t.title}</h3><p>{t.items} itens planejados · ainda não conectado ao banco</p><div><button className="secondary" onClick={()=>onUse(t.title)}>Criar checklist vazio</button></div></article>)}</div></section>}
-
+function Models({onUse}:{onUse:(template:ChecklistTemplate)=>void}) {
+  return <section><div className="section-toolbar"><div><h2>Modelos para alimentação e eventos</h2><p>O modelo de buffet pode ser utilizado como ponto de partida; os demais cards continuam demonstrativos.</p></div></div><div className="template-grid">{templates.map(template=><article className="template-card" key={template.title}><div className="template-icon" style={{background:template.color}}>{template.emoji}</div><span className="segment">{template.segment}</span><h3>{template.title}</h3><p>{template.sections?.length ? `${template.items} itens · ${template.sections.length} seções` : `${template.items} itens planejados · ainda não conectado ao banco`}</p><div><button className="secondary" onClick={()=>onUse(template)}>{template.sections?.length ? "Usar modelo" : "Criar checklist vazio"}</button></div></article>)}</div></section>}
 function organizationFormFromDetails(details:OrganizationDetails):OrganizationForm{return {name:details.name,commercial_email:details.commercial_email||"",whatsapp:details.whatsapp||"",instagram:details.instagram||"",phone:details.phone||"",address:details.address||""}}
 
 function OrganizationSettings({organizationId,details,viewerRole,loading,loadError,onSaved}:{organizationId:string;details:OrganizationDetails|null;viewerRole:string;loading:boolean;loadError:string;onSaved:(details:OrganizationDetails)=>void}){
@@ -327,4 +448,16 @@ function OrganizationSettingsForm({organizationId,details,canEdit,onSaved}:{orga
 
 function Generic({section,checklists,history,loading,error,viewerRole}:{section:string;checklists:ChecklistListItem[];history:HistoryItem[];loading:boolean;error:string;viewerRole:string}){const operationStatus=(checklist:ChecklistListItem)=>checklist.execution_status==="completed"?"Concluído":checklist.execution_status==="paused"?"Continuar":checklist.execution_status==="in_progress"?"Em execução":"Iniciar";const realSection=section==="Operação"||section==="Histórico";return <section><div className="section-toolbar"><div><h2>{section}</h2><p>{section==="Operação"?(viewerRole==="collaborator"?"Checklists atribuídos a você, com o status real da execução.":"Checklists reais da sua organização, prontos para editar e atribuir."):section==="Histórico"?"Execuções concluídas registradas no Supabase.":"Esta área ainda não foi homologada e não exibe dados simulados."}</p></div></div><article className="data-panel">{realSection&&<div className="data-head"><span>Nome</span><span>{section==="Histórico"?"Executor":"Categoria"}</span><span>{section==="Histórico"?"Conclusão":"Status"}</span><span></span></div>}{section==="Operação" ? <>{loading&&<p className="data-state">Carregando checklists...</p>}{error&&<p className="data-state error">{error} <button className="retry-link" onClick={()=>window.location.reload()}>Tentar novamente</button></p>}{!loading&&!error&&checklists.length===0&&<p className="data-state">{viewerRole==="collaborator"?"Nenhum checklist atribuído a você.":"Nenhum checklist criado nesta organização."}</p>}{checklists.map((checklist)=><button className="data-row" key={checklist.assignment_id||checklist.id} onClick={()=>{window.location.href=viewerRole==="collaborator"&&checklist.assignment_id?`/executions/${checklist.assignment_id}`:`/checklists/${checklist.id}`}}><span><i className="file-icon"><Icon name="check" size={19}/></i><strong>{checklist.name}</strong></span><span>{checklist.category || "Sem categoria"}</span><span className={`status ${checklist.execution_status==="completed"?"completed-label":""}`}>{checklist.execution_status?operationStatus(checklist):checklist.status==="draft"?"Rascunho":"Ativo"}</span><Icon name="arrow"/></button>)}</> : section==="Histórico" ? <>{loading&&<p className="data-state">Carregando histórico...</p>}{error&&<p className="data-state error">{error} <button className="retry-link" onClick={()=>window.location.reload()}>Tentar novamente</button></p>}{!loading&&!error&&history.length===0&&<p className="data-state">Nenhuma execução concluída.</p>}{history.map(record=><button className="data-row history-row" key={record.id} onClick={()=>{window.location.href=`/history/${record.id}`}}><span><i className="file-icon"><Icon name="calendar" size={19}/></i><strong>{record.checklist_name}</strong></span><span>{record.executor_name}</span><span className="status completed-label">{new Date(record.completed_at).toLocaleString("pt-BR")} · {record.conformity_percentage??0}%</span><Icon name="arrow"/></button>)}</> : <div className="module-pending"><Icon name="clock" size={28}/><h3>Homologação pendente</h3><p>Este módulo permanece no escopo do MVP, mas ainda não está conectado ao banco. Nenhuma informação fictícia é exibida.</p></div>}</article></section>}
 
-function CreateModal({close,create}:{close:()=>void,create:(n:string,category:string)=>Promise<void>}){const [name,setName]=useState("");const [segment,setSegment]=useState("Bar");const [busy,setBusy]=useState(false);return <div className="overlay" onMouseDown={e=>e.target===e.currentTarget&&close()}><div className="modal"><button className="modal-close" onClick={close} aria-label="Fechar"><Icon name="close"/></button><span className="modal-icon"><Icon name="check"/></span><h2>Novo checklist</h2><p>Crie uma rotina e já deixe pronta para editar e atribuir à equipe.</p><label>Nome do checklist<input autoFocus value={name} onChange={e=>setName(e.target.value)} placeholder="Ex.: Abertura da estação de bar"/></label><label>Área da operação<select value={segment} onChange={e=>setSegment(e.target.value)}><option>Bar</option><option>Cozinha</option><option>Buffet</option><option>Evento</option><option>Estoque</option><option>Higienização</option></select></label><div className="modal-actions"><button className="secondary" onClick={close}>Cancelar</button><button className="primary" disabled={!name.trim()||busy} onClick={async()=>{setBusy(true);await create(name,segment);setBusy(false)}}>{busy?"Salvando...":"Criar checklist"}</button></div></div></div>}
+function CreateModal({close,create,template}:{close:()=>void;create:(name:string,category:string,template?:ChecklistTemplate)=>Promise<void>;template:ChecklistTemplate|null}) {
+  const [name,setName]=useState(template?.title||"");
+  const [segment,setSegment]=useState(template?.category||"Bar");
+  const [busy,setBusy]=useState(false);
+  const submitLock=useRef(false);
+  const submit=async()=>{
+    if(!name.trim()||submitLock.current)return;
+    submitLock.current=true;setBusy(true);
+    try{await create(name,segment,template||undefined)}
+    finally{submitLock.current=false;setBusy(false)}
+  };
+  return <div className="overlay" onMouseDown={event=>!busy&&event.target===event.currentTarget&&close()}><div className="modal"><button className="modal-close" disabled={busy} onClick={close} aria-label="Fechar"><Icon name="close"/></button><span className="modal-icon"><Icon name="check"/></span><h2>{template?"Criar checklist com modelo":"Novo checklist"}</h2><p>{template?`Confirme o nome e a área. Serão criadas ${template.sections?.length||0} seções e ${template.items} itens.`:"Crie uma rotina e já deixe pronta para editar e atribuir à equipe."}</p><label>Nome do checklist<input autoFocus value={name} onChange={event=>setName(event.target.value)} placeholder="Ex.: Abertura da estação de bar"/></label><label>Área da operação<select value={segment} onChange={event=>setSegment(event.target.value)}><option>Bar</option><option>Cozinha</option><option>Buffet</option><option>Evento</option><option>Estoque</option><option>Higienização</option></select></label><div className="modal-actions"><button className="secondary" disabled={busy} onClick={close}>Cancelar</button><button className="primary" disabled={!name.trim()||busy} onClick={submit}>{busy?"Salvando...":template?"Criar checklist com modelo":"Criar checklist"}</button></div></div></div>
+}
