@@ -44,6 +44,14 @@ export default defineConfig(async ({ command }) => {
   const { cloudflare } = await import("@cloudflare/vite-plugin");
 
   return {
+    // Supabase's SSR entry otherwise bundles @supabase/node-fetch's Node
+    // implementation, which requires Node built-ins unavailable in Workers.
+    // This exact-package alias selects its global Fetch implementation.
+    resolve: {
+      alias: {
+        "@supabase/node-fetch": "@supabase/node-fetch/browser.js",
+      },
+    },
     server: {
       host: "0.0.0.0",
       allowedHosts: ["terminal.local"],
