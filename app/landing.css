@@ -27,3 +27,7 @@
 .cf-contact-inner>div:first-child>p:last-child,.cf-contact-action p{color:#B5C9C0}
 .cf-button-dark{border-color:#8FC7A3;background:#8FC7A3;color:#0B141A!important}
 .cf-button-dark:hover{background:#A9D8B9}
+/* Logo PNG has near-black matte pixels; lighten blends them into the dark header. */
+.cf-brand img{mix-blend-mode:lighten}
+/* The landing is dark-only, so the global theme toggle would only cover content here. */
+body:has(.cf-landing) .theme-toggle{display:none}
