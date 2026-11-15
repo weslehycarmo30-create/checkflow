@@ -11,9 +11,9 @@ const templates = templatesSource.split(/\n  \{\s*\n?\s*emoji:/).slice(1).map(bl
   hasSections: /sections:\[/.test(block),
 }));
 
-test("pilot ships the bar opening, event operation, bar closing and buffet templates", () => {
+test("pilot ships the five Day 0 templates", () => {
   const titles = templates.map(template => template.title);
-  for (const title of ["Abertura do bar", "Operação do evento", "Fechamento do bar", "Montagem e desmontagem de buffet"]) {
+  for (const title of ["Abertura do bar", "Operação do evento", "Conferência de bebidas e insumos", "Fechamento do bar", "Montagem e desmontagem de buffet"]) {
     assert.ok(titles.includes(title), `missing template: ${title}`);
   }
 });
