@@ -77,7 +77,7 @@ const nav = [
 ] as const;
 type ChecklistTemplateItem = {
   prompt: string;
-  answer_type: "yes_no" | "number" | "short_text";
+  answer_type: "yes_no" | "number" | "short_text" | "long_text" | "rating" | "time";
   required: boolean;
   nonconformity_on_no?: boolean;
   require_observation_on_failure?: boolean;
@@ -147,6 +147,31 @@ const templates: ChecklistTemplate[] = [
         {prompt:"Os alimentos mantidos foram acondicionados em recipientes fechados e identificados?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
         {prompt:"As superfícies e os equipamentos foram limpos e higienizados após o serviço?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
         {prompt:"Os utensílios foram recolhidos e guardados no local adequado?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true}
+      ]}
+    ]
+  },
+  {
+    emoji:"🎉", title:"Operação do evento", segment:"Eventos", category:"Evento", items:12, color:"#fff2df",
+    sections:[
+      {title:"Início",items:[
+        {prompt:"A equipe está presente e com os papéis alinhados?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"A estação ficou pronta no horário combinado?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true}
+      ]},
+      {title:"Abastecimento",items:[
+        {prompt:"Há gelo disponível no fluxo de serviço?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"As bebidas críticas estão disponíveis?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"Copos e descartáveis estão repostos?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"A reposição está dentro do combinado?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true}
+      ]},
+      {title:"Estação e segurança",items:[
+        {prompt:"A bancada está limpa e organizada?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"A área do público está sem risco operacional?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"O equipamento crítico está operando?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true}
+      ]},
+      {title:"Registro",items:[
+        {prompt:"Dê uma nota de 0 a 10 para a estação.",answer_type:"rating",required:true},
+        {prompt:"Descreva intercorrências que exigem ação (se houver).",answer_type:"long_text",required:false},
+        {prompt:"Horário da última conferência.",answer_type:"time",required:true}
       ]}
     ]
   },
