@@ -10,10 +10,10 @@ export function BrandLogo({ className = "", compactOnMobile = false }: BrandLogo
     <span className={`checkflow-brand-logo${compactOnMobile ? " compact-on-mobile" : ""}${className ? ` ${className}` : ""}`}>
       <Image
         className="checkflow-brand-logo-wide"
-        src="/brand/checkflow-logo-horizontal.png"
+        src="/brand/checkflow-logo-horizontal-720.png"
         alt="CheckFlow"
-        width={1370}
-        height={410}
+        width={720}
+        height={215}
         priority
         unoptimized
       />
