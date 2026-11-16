@@ -48,7 +48,7 @@ test("production runtime serves stylesheet and critical JavaScript instead of an
 
     // A 200 stylesheet can still be stale or unrelated to the landing. Keep
     // this coupled to distinctive classes rendered by the current homepage.
-    for (const className of ["marketing-shell", "marketing-hero", "marketing-preview", "marketing-pilot"]) {
+    for (const className of ["cf-landing", "cf-hero", "cf-window", "cf-contact"]) {
       assert.match(html, new RegExp(`class="[^"]*\\b${className}\\b`));
       assert.match(cssText, new RegExp(`\\.${className}\\{`));
     }
