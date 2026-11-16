@@ -32,6 +32,8 @@ const salesUrl = getSalesWhatsAppUrl(process.env.NEXT_PUBLIC_CHECKFLOW_SALES_WHA
 const faqs = [
   ["Preciso instalar algum aplicativo?", "Não. O CheckFlow funciona no navegador do celular ou do computador e também pode ser adicionado à tela inicial do celular como aplicativo."],
   ["A equipe consegue registrar fotos?", "Sim. Nos itens configurados para isso, quem executa registra a foto durante o checklist, junto com as respostas."],
+  ["Consigo saber quem executou cada checklist?", "Sim. Cada execução registra a pessoa responsável, o horário e as respostas dadas."],
+  ["O histórico fica registrado?", "Sim. As execuções concluídas continuam disponíveis no histórico, com respostas, evidências e não conformidades."],
   ["Os dados de uma empresa ficam separados das outras?", "Sim. Cada empresa tem o próprio espaço, e cada pessoa vê apenas o que o seu papel na equipe permite."],
   ["Para quais operações o CheckFlow serve?", "Para rotinas recorrentes como abertura, fechamento, higiene, conferência e montagem, em restaurantes, bares, buffets, eventos e operações parecidas."],
   ...(salesUrl ? [["Como funciona o piloto de 14 dias?", "Você escolhe uma rotina real, nós ajudamos a estruturá-la no CheckFlow em até 48 horas e sua equipe usa durante 14 dias. No fim, avaliamos juntos o resultado e a continuidade."]] : []),
