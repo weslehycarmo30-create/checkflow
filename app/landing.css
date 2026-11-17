@@ -43,3 +43,6 @@ body:has(.cf-landing) .theme-toggle{display:none}
 .cf-dialog-close{position:absolute;top:12px;right:12px;width:40px;height:40px;border:0;border-radius:8px;background:transparent;color:var(--cf-ink);font-size:24px;cursor:pointer}.cf-dialog-cancel{min-height:44px;border:0;background:transparent;color:var(--cf-muted);font:inherit;font-size:13px;font-weight:700;cursor:pointer}.cf-dialog :is(.cf-dialog-close,.cf-dialog-cancel):hover{color:var(--cf-neon)}.cf-dialog button:focus-visible{outline:3px solid var(--cf-neon);outline-offset:3px}
 @media(max-width:540px){.cf-dialog{padding:24px 18px}.cf-hero-actions .pwa-install-slot,.cf-hero-actions .pwa-install-button{width:100%}}
 .cf-pilot h2+p{margin:18px 0 0}
+/* Touch targets: text links get a 44px hit area without changing the layout. */
+.cf-login,.cf-text-link,.cf-inline-link,.cf-footer-nav a,.cf-footer-inner>a:last-child{display:inline-flex;align-items:center;min-height:44px}
+.cf-header nav a{display:inline-flex;align-items:center;min-height:44px}
