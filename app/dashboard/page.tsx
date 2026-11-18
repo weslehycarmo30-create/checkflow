@@ -8,6 +8,7 @@ import { initializeSupabaseBrowserClient } from "../../lib/supabase";
 import { TeamManagement } from "../team-management";
 import { FeedbackMessage, useFeedback } from "../feedback";
 import { BrandLogo } from "../../components/brand-logo";
+import { buildOperationalReport, LOW_CONFORMITY_THRESHOLD, REPORT_PERIODS, reportToCsv } from "../../lib/operational-report.mjs";
 
 type ChecklistListItem = {
   id: string;
@@ -73,8 +74,9 @@ const icons: Record<IconName, React.ReactNode> = {
 function Icon({name, size=20}:{name:IconName,size?:number}) { return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{icons[name]}</svg> }
 
 const nav = [
-  ["Visão geral","home"],["Operação","check"],["Modelos","model"],["Planos de ação","task"],["Histórico","calendar"],["Equipe e unidades","team"]
+  ["Visão geral","home"],["Operação","check"],["Modelos","model"],["Planos de ação","task"],["Histórico","calendar"],["Equipe e unidades","team"],["Relatórios","chart"]
 ] as const;
+const managerOnlySections = new Set<string>(["Relatórios"]);
 type ChecklistTemplateItem = {
   prompt: string;
   answer_type: "yes_no" | "number" | "short_text" | "long_text" | "rating" | "time";
@@ -473,7 +475,7 @@ export default function Home() {
     <button className="mobile-menu" onClick={()=>setMobile(!mobile)} aria-label="Abrir menu">☰</button>
     <aside className={mobile?"sidebar open":"sidebar"}>
       <div className="brand"><BrandLogo /></div>
-      <nav>{nav.map(([label,icon])=><button key={label} className={section===label?"navitem active":"navitem"} onClick={()=>{if(label==="Planos de ação"){window.location.href="/action-plans";return}setSection(label);setMobile(false)}}><Icon name={icon}/><span>{label}</span></button>)}</nav>
+      <nav>{nav.filter(([label])=>!managerOnlySections.has(label)||(viewerRole!==""&&viewerRole!=="collaborator")).map(([label,icon])=><button key={label} className={section===label?"navitem active":"navitem"} onClick={()=>{if(label==="Planos de ação"){window.location.href="/action-plans";return}setSection(label);setMobile(false)}}><Icon name={icon}/><span>{label}</span></button>)}</nav>
       <div className="side-bottom"><button className="navitem" onClick={()=>setSection("Configurações")}><Icon name="gear"/>Configurações</button><LogoutButton variant="menu"/><div className="workspace workspace-static"><span className="building">▥</span><span><small>Organização atual</small>{organizationName}</span></div></div>
     </aside>
     <main className="main">
@@ -482,8 +484,9 @@ export default function Home() {
       {section==="Visão geral" && <Dashboard checklists={filteredChecklists} executions={dashboardExecutions} history={history} nonConformities={openNonConformities} loading={checklistsLoading} error={checklistsError} setSection={setSection}/>}
       {section==="Modelos" && <Models onUse={(template)=>{setSelectedTemplate(template.sections?.length?template:null);setModal(true);if(!template.sections?.length)notify(`Modelo “${template.title}” ainda não tem estrutura carregada; será criado checklist vazio.`)}}/>}
       {section==="Equipe e unidades" && <TeamManagement organizationId={organizationId} />}
+      {section==="Relatórios" && <OperationalReport history={history} loading={checklistsLoading} error={checklistsError} canView={viewerRole!==""&&viewerRole!=="collaborator"}/>}
       {section==="Configurações"&&<OrganizationSettings organizationId={organizationId} details={organizationDetails} viewerRole={viewerRole} loading={checklistsLoading} loadError={checklistsError} onSaved={details=>{setOrganizationDetails(details);setOrganizationName(details.name);notify("Dados da empresa salvos com sucesso.")}}/>}
-      {section!=="Visão geral"&&section!=="Modelos"&&section!=="Equipe e unidades"&&section!=="Configurações"&&<Generic section={section} checklists={filteredChecklists} history={history} loading={checklistsLoading} error={checklistsError} viewerRole={viewerRole}/>}
+      {section!=="Visão geral"&&section!=="Modelos"&&section!=="Equipe e unidades"&&section!=="Configurações"&&section!=="Relatórios"&&<Generic section={section} checklists={filteredChecklists} history={history} loading={checklistsLoading} error={checklistsError} viewerRole={viewerRole}/>}
     </main>
     {modal&&<CreateModal close={closeCreateModal} create={createChecklist} template={selectedTemplate}/>}
     <FeedbackMessage feedback={feedback} onClose={clearFeedback}/>
@@ -501,6 +504,18 @@ function Dashboard({checklists,executions,history,nonConformities,loading,error,
  <article className="panel recent"><div className="panel-head"><div><h2>Conclusões recentes</h2><p>Histórico persistido no Supabase</p></div><button className="text-link" onClick={()=>setSection("Histórico")}>Ver histórico</button></div>{history.length===0?<p className="data-state">Nenhuma execução concluída.</p>:history.slice(0,5).map(record=><button className="recent-row" key={record.id} onClick={()=>{window.location.href=`/history/${record.id}`}}><span className="recent-icon"><Icon name="calendar"/></span><span><strong>{record.checklist_name}</strong><small>{record.executor_name} · {new Date(record.completed_at).toLocaleString("pt-BR")}</small></span><span className="status">{record.conformity_percentage??0}%</span><Icon name="arrow" size={16}/></button>)}</article></section></>}</>
 }
 
+function OperationalReport({history,loading,error,canView}:{history:HistoryItem[];loading:boolean;error:string;canView:boolean}){
+ const [days,setDays]=useState(30);
+ const report=useMemo(()=>buildOperationalReport(history,{days}),[history,days]);
+ if(!canView)return <section><article className="data-panel"><p className="data-state">Relatórios disponíveis apenas para responsáveis e gestores.</p></article></section>;
+ const exportCsv=()=>{const blob=new Blob(["﻿"+reportToCsv(report)],{type:"text/csv;charset=utf-8"});const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download=`checkflow-relatorio-${days}-dias.csv`;link.click();URL.revokeObjectURL(url)};
+ const kpis=[{label:"Conclusões no período",value:String(report.completions),icon:"check",tone:"teal"},{label:"Conformidade média",value:report.average_conformity===null?"—":`${report.average_conformity}%`,icon:"chart",tone:"green"},{label:`Abaixo de ${LOW_CONFORMITY_THRESHOLD}%`,value:String(report.below_threshold),icon:"clock",tone:"red"}];
+ const table=(title:string,subtitle:string,rows:typeof report.by_checklist)=><article className="data-panel report-table"><div className="panel-head report-head"><div><h2>{title}</h2><p>{subtitle}</p></div></div><div className="data-head"><span>Nome</span><span>Última conclusão</span><span>Conformidade média</span><span></span></div>{rows.length===0?<p className="data-state">Nenhuma conclusão no período.</p>:rows.map(row=><div className="data-row report-row" key={row.name}><span><strong>{row.name}</strong><small>{row.completions} {row.completions===1?"conclusão":"conclusões"}</small></span><span>{row.last_completed_at?new Date(row.last_completed_at).toLocaleDateString("pt-BR"):"—"}</span><span className={row.average_conformity!==null&&row.average_conformity<LOW_CONFORMITY_THRESHOLD?"status report-low":"status"}>{row.average_conformity===null?"—":`${row.average_conformity}%`}</span><span></span></div>)}</article>;
+ return <section><div className="section-toolbar report-toolbar"><div><h2>Relatório operacional</h2><p>Calculado a partir das {history.length} execuções concluídas mais recentes da sua organização.</p></div><div><div className="segmented" role="group" aria-label="Período do relatório">{REPORT_PERIODS.map(period=><button type="button" key={period} className={days===period?"selected":""} aria-pressed={days===period} onClick={()=>setDays(period)}>{period} dias</button>)}</div><button type="button" className="secondary report-export" disabled={report.completions===0} onClick={exportCsv}>Exportar CSV</button></div></div>
+ {error&&<p className="data-state error">{error} <button className="retry-link" onClick={()=>window.location.reload()}>Tentar novamente</button></p>}
+ {loading?<article className="panel"><p className="data-state">Carregando relatório...</p></article>:<><section className="kpi-grid report-kpis">{kpis.map(k=><div className="kpi report-kpi" key={k.label}><span className={`kpi-icon ${k.tone}`}><Icon name={k.icon as IconName}/></span><div><p>{k.label}</p><strong>{k.value}</strong></div><small>últimos {days} dias</small></div>)}</section>
+ <div className="report-grid">{table("Por checklist","Conclusões e conformidade de cada rotina",report.by_checklist)}{table("Por executor","Quem concluiu e com qual conformidade",report.by_executor)}</div></>}</section>
+}
 function Models({onUse}:{onUse:(template:ChecklistTemplate)=>void}) {
   return <section><div className="section-toolbar"><div><h2>Modelos para alimentação e eventos</h2><p>Escolha um modelo pronto como ponto de partida e ajuste os itens à sua operação.</p></div></div><div className="template-grid">{templates.filter(template=>template.sections?.length).map(template=><article className="template-card" key={template.title}><div className="template-icon" style={{background:template.color}}>{template.emoji}</div><span className="segment">{template.segment}</span><h3>{template.title}</h3><p>{template.sections?.length ? `${template.items} itens · ${template.sections.length} seções` : `${template.items} itens planejados · ainda não conectado ao banco`}</p><div><button className="secondary" onClick={()=>onUse(template)}>{template.sections?.length ? "Usar modelo" : "Criar checklist vazio"}</button></div></article>)}</div></section>}
 function organizationFormFromDetails(details:OrganizationDetails):OrganizationForm{return {name:details.name,commercial_email:details.commercial_email||"",whatsapp:details.whatsapp||"",instagram:details.instagram||"",phone:details.phone||"",address:details.address||""}}

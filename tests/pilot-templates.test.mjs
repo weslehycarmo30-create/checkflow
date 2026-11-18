@@ -39,7 +39,6 @@ test("every pilot template has real sections and its declared item count matches
   }
 });
 
-test("pilot clients never see unconnected templates or the unfinished reports menu", () => {
+test("pilot clients never see unconnected templates", () => {
   assert.match(dashboard, /templates\.filter\(template=>template\.sections\?\.length\)/);
-  assert.doesNotMatch(dashboard, /\["Relatórios","chart"\]/);
 });
