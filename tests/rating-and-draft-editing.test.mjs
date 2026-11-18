@@ -6,7 +6,9 @@ const execution = await readFile(new URL("../app/executions/[assignmentId]/check
 const detail = await readFile(new URL("../app/checklists/[id]/checklist-detail.tsx", import.meta.url), "utf8");
 
 test("rating 0–10 persists numeric answers and treats zero as answered", () => {
-  assert.match(execution, /aria-label=\"Avaliação de 0 a 10\"/);
+  // The select is named by the item prompt; the scale is announced by its placeholder option.
+  assert.match(execution, /<select aria-labelledby=\{`prompt-\$\{item\.id\}`\} value=\{String\(value\?\?""\)\} disabled=\{readOnly\} onChange=\{event=>\{const nextValue/);
+  assert.match(execution, /Selecione de 0 a 10/);
   assert.match(execution, /nextValue===\"\"\?null:Number\(nextValue\)/);
   assert.match(execution, /value !== undefined && value !== null && value !== \"\"/);
   assert.match(execution, /Array\.from\(\{length:11\}/);

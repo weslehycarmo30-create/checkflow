@@ -342,12 +342,12 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
   const answerField = (item:Item) => {
     const value = answers[item.id];
     const readOnly = execution?.status!=="in_progress" || savingItems.includes(item.id);
-    if (item.answer_type==="checkbox") return <label className="mobile-check"><input type="checkbox" checked={value===true} disabled={readOnly} onChange={event=>saveAnswer(item.id,event.target.checked)}/><span>{savingItems.includes(item.id)?"Salvando...":value===true?"Concluído":"Marcar como concluído"}</span></label>;
+    if (item.answer_type==="checkbox") return <label className="mobile-check"><input type="checkbox" aria-labelledby={`prompt-${item.id}`} checked={value===true} disabled={readOnly} onChange={event=>saveAnswer(item.id,event.target.checked)}/><span>{savingItems.includes(item.id)?"Salvando...":value===true?"Concluído":"Marcar como concluído"}</span></label>;
     if (item.answer_type==="yes_no") {
       const isFailure = value==="Não";
       const occurrenceSaved = nonConformityItems.includes(item.id);
       return <div className="conditional-answer">
-        <select value={String(value??"")} disabled={readOnly} onChange={event=>{
+        <select aria-labelledby={`prompt-${item.id}`} value={String(value??"")} disabled={readOnly} onChange={event=>{
           const nextValue=event.target.value;
           if (nextValue==="Não") {
             setAnswers(current=>({...current,[item.id]:"Não"}));
@@ -364,15 +364,15 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
         </div>}
       </div>;
     }
-    if (item.answer_type==="rating") return <select aria-label="Avaliação de 0 a 10" value={String(value??"")} disabled={readOnly} onChange={event=>{const nextValue=event.target.value; void saveAnswer(item.id,nextValue===""?null:Number(nextValue));}}><option value="">Selecione de 0 a 10</option>{Array.from({length:11},(_,index)=><option key={index} value={index}>{index}</option>)}</select>;
+    if (item.answer_type==="rating") return <select aria-labelledby={`prompt-${item.id}`} value={String(value??"")} disabled={readOnly} onChange={event=>{const nextValue=event.target.value; void saveAnswer(item.id,nextValue===""?null:Number(nextValue));}}><option value="">Selecione de 0 a 10</option>{Array.from({length:11},(_,index)=><option key={index} value={index}>{index}</option>)}</select>;
     if (item.answer_type==="single_select") {
       const options = Array.isArray(item.options) ? item.options.filter(option=>typeof option==="string") as string[] : [];
-      return <select value={String(value??"")} disabled={readOnly} onChange={event=>saveAnswer(item.id,event.target.value)}><option value="">Selecione</option>{options.map(option=><option key={option} value={option}>{option}</option>)}</select>;
+      return <select aria-labelledby={`prompt-${item.id}`} value={String(value??"")} disabled={readOnly} onChange={event=>saveAnswer(item.id,event.target.value)}><option value="">Selecione</option>{options.map(option=><option key={option} value={option}>{option}</option>)}</select>;
     }
-    if (item.answer_type==="photo") return <div className="photo-answer">{photoUrls[item.id]&&<img src={photoUrls[item.id]} alt={`Evidência de ${item.prompt}`}/>}<label className={`photo-upload ${readOnly?"disabled":""}`}><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={readOnly} onChange={event=>uploadPhoto(item.id,event.target.files?.[0]||null)}/><span>{savingItems.includes(item.id)?"Enviando fotografia...":photoUrls[item.id]?"Fotografia enviada":"Tirar ou escolher fotografia"}</span></label><small>JPG, PNG ou WebP · máximo de 10 MB</small></div>;
-    if (item.answer_type==="long_text") return <textarea defaultValue={String(value??"")} disabled={readOnly} placeholder="Digite sua resposta" onBlur={event=>event.target.value!==String(value??"")&&saveAnswer(item.id,event.target.value)}/>;
+    if (item.answer_type==="photo") return <div className="photo-answer">{photoUrls[item.id]&&<img src={photoUrls[item.id]} alt={`Evidência de ${item.prompt}`}/>}<label className={`photo-upload ${readOnly?"disabled":""}`}><input type="file" aria-labelledby={`prompt-${item.id}`} accept="image/jpeg,image/png,image/webp" capture="environment" disabled={readOnly} onChange={event=>uploadPhoto(item.id,event.target.files?.[0]||null)}/><span>{savingItems.includes(item.id)?"Enviando fotografia...":photoUrls[item.id]?"Fotografia enviada":"Tirar ou escolher fotografia"}</span></label><small>JPG, PNG ou WebP · máximo de 10 MB</small></div>;
+    if (item.answer_type==="long_text") return <textarea aria-labelledby={`prompt-${item.id}`} defaultValue={String(value??"")} disabled={readOnly} placeholder="Digite sua resposta" onBlur={event=>event.target.value!==String(value??"")&&saveAnswer(item.id,event.target.value)}/>;
     const inputType = item.answer_type==="number"?"number":item.answer_type==="date"?"date":item.answer_type==="time"?"time":"text";
-    return <input type={inputType} defaultValue={String(value??"")} disabled={readOnly} placeholder="Digite sua resposta" onBlur={event=>event.target.value!==String(value??"")&&saveAnswer(item.id,item.answer_type==="number"&&event.target.value?Number(event.target.value):event.target.value)}/>;
+    return <input type={inputType} aria-labelledby={`prompt-${item.id}`} defaultValue={String(value??"")} disabled={readOnly} placeholder="Digite sua resposta" onBlur={event=>event.target.value!==String(value??"")&&saveAnswer(item.id,item.answer_type==="number"&&event.target.value?Number(event.target.value):event.target.value)}/>;
   };
 
   return <main className="execution-page">
@@ -386,13 +386,13 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
         <h1>{checklist.name}</h1>
         <p>{checklist.description || "Siga os itens abaixo e registre cada etapa."}</p>
         <div className="progress-label"><span>Progresso</span><strong>{progress}%</strong></div>
-        <div className="progress-track"><i style={{width:`${progress}%`}}/></div>
+        <div className="progress-track" role="progressbar" aria-label="Progresso do checklist" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><i style={{width:`${progress}%`}}/></div>
         {assignment.due_at&&<small>Prazo: {new Date(assignment.due_at).toLocaleString("pt-BR")}</small>}
       </section>
       {!execution?<section className="execution-card start-card"><h2>Pronto para começar?</h2><p>O horário de início e sua identificação serão registrados.</p><button className="primary" disabled={busy||items.length===0} onClick={startExecution}>{busy?"Iniciando...":"Iniciar checklist"}</button>{items.length===0&&<small>Este checklist ainda não possui itens.</small>}</section>:<>
         {execution.status!=="completed"&&<div className="execution-actions"><button className="secondary" disabled={busy} onClick={()=>setExecutionStatus(execution.status==="paused"?"in_progress":"paused")}>{execution.status==="paused"?"Continuar checklist":"Pausar"}</button><span>Iniciado em {new Date(execution.started_at).toLocaleString("pt-BR")}</span></div>}
         {execution.status==="completed"&&<section className="execution-card completion-card"><span>{invalidPersistedCompletion?"!":"✓"}</span><div><h2>{invalidPersistedCompletion?"Execução concluída com dados persistidos inconsistentes":"Checklist finalizado"}</h2><p>{invalidPersistedCompletion?`${requiredMissing.length} item(ns) obrigatório(s) não possuem resposta válida persistida. Nenhuma resposta foi alterada nesta tela.`:`Concluído em ${new Date(execution.completed_at||execution.started_at).toLocaleString("pt-BR")}.`}</p></div></section>}
-        {sections.map(section=><section className="execution-card execution-section" key={section.id}><h2>{section.title}</h2>{section.checklist_items.map((item,index)=><article className="execution-item" key={item.id}><div className="item-number">{index+1}</div><div><label>{item.prompt}{item.required&&<em>Obrigatório</em>}</label>{answerField(item)}</div></article>)}</section>)}
+        {sections.map(section=><section className="execution-card execution-section" key={section.id}><h2>{section.title}</h2>{section.checklist_items.map((item,index)=><article className="execution-item" key={item.id}><div className="item-number">{index+1}</div><div><label id={`prompt-${item.id}`}>{item.prompt}{item.required&&<em>Obrigatório</em>}</label>{answerField(item)}</div></article>)}</section>)}
         {execution.status!=="completed"&&<section className="execution-card finish-card"><button className="primary" disabled={busy||savingItems.length>0||requiredMissing.length>0||execution.status==="paused"} onClick={finishExecution}>{busy?"Finalizando...":savingItems.length>0?"Salvando respostas...":"Finalizar checklist"}</button>{requiredMissing.length>0&&<p>{requiredMissing.length} item(ns) obrigatório(s) ainda pendente(s).</p>}</section>}
       </>}
     </div>}
