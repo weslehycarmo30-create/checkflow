@@ -73,11 +73,11 @@ const icons: Record<IconName, React.ReactNode> = {
 function Icon({name, size=20}:{name:IconName,size?:number}) { return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{icons[name]}</svg> }
 
 const nav = [
-  ["Visão geral","home"],["Operação","check"],["Modelos","model"],["Planos de ação","task"],["Histórico","calendar"],["Equipe e unidades","team"],["Relatórios","chart"]
+  ["Visão geral","home"],["Operação","check"],["Modelos","model"],["Planos de ação","task"],["Histórico","calendar"],["Equipe e unidades","team"]
 ] as const;
 type ChecklistTemplateItem = {
   prompt: string;
-  answer_type: "yes_no" | "number";
+  answer_type: "yes_no" | "number" | "short_text";
   required: boolean;
   nonconformity_on_no?: boolean;
   require_observation_on_failure?: boolean;
@@ -93,10 +93,29 @@ type ChecklistTemplate = {
   sections?: ChecklistTemplateSection[];
 };
 const templates: ChecklistTemplate[] = [
-  {emoji:"🍸", title:"Abertura do bar", segment:"Bares e bartender", items:18, color:"#e8f4ff"},
-  {emoji:"🧊", title:"Estação de bartender para evento", segment:"Eventos", items:24, color:"#fff2df"},
-  {emoji:"🧼", title:"Higienização de cozinha", segment:"Cozinha profissional", items:16, color:"#e8fbf4"},
-  {emoji:"🌡️", title:"Controle de temperatura", segment:"Segurança alimentar", items:12, color:"#f0ecff"},
+  {
+    emoji:"🍸", title:"Abertura do bar", segment:"Bares e bartender", category:"Bar", items:8, color:"#e8f4ff",
+    sections:[
+      {title:"Segurança",items:[
+        {prompt:"O piso está seco e a rota de circulação está livre?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"O extintor está acessível e com lacre íntegro?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true}
+      ]},
+      {title:"Higiene",items:[
+        {prompt:"Bancada, pia e utensílios estão higienizados?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true}
+      ]},
+      {title:"Mise en place",items:[
+        {prompt:"Há gelo suficiente e protegido?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"Copos, guardanapos e guarnições estão repostos?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true}
+      ]},
+      {title:"Equipamentos e estoque",items:[
+        {prompt:"Registre a temperatura da geladeira ou freezer (°C).",answer_type:"number",required:true},
+        {prompt:"As bebidas críticas foram conferidas e estão disponíveis?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true}
+      ]},
+      {title:"Liberação",items:[
+        {prompt:"Nome do responsável que liberou a abertura.",answer_type:"short_text",required:true}
+      ]}
+    ]
+  },
   {
     emoji:"🍽️", title:"Montagem e desmontagem de buffet", segment:"Buffets", category:"Buffet", items:21, color:"#e9f7f8",
     sections:[
@@ -131,7 +150,28 @@ const templates: ChecklistTemplate[] = [
       ]}
     ]
   },
-  {emoji:"🔒", title:"Fechamento do restaurante", segment:"Restaurantes", items:20, color:"#fff0ee"}
+  {
+    emoji:"🔒", title:"Fechamento do bar", segment:"Bares e bartender", category:"Bar", items:7, color:"#fff0ee",
+    sections:[
+      {title:"Estoque",items:[
+        {prompt:"Registre a contagem dos itens críticos.",answer_type:"number",required:true},
+        {prompt:"Sobras e avarias foram separadas e anotadas?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true}
+      ]},
+      {title:"Higiene",items:[
+        {prompt:"Bancadas, pia e utensílios estão limpos?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true}
+      ]},
+      {title:"Equipamentos e segurança",items:[
+        {prompt:"Geladeiras, máquinas e luzes foram conferidas?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"Caixa, chaves e acessos foram entregues conforme o procedimento da casa?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true}
+      ]},
+      {title:"Resíduos",items:[
+        {prompt:"Lixo e recicláveis foram destinados corretamente?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true}
+      ]},
+      {title:"Encerramento",items:[
+        {prompt:"Nome do responsável pelo fechamento.",answer_type:"short_text",required:true}
+      ]}
+    ]
+  }
 ];
 
 export default function Home() {
@@ -417,7 +457,7 @@ function Dashboard({checklists,executions,history,nonConformities,loading,error,
 }
 
 function Models({onUse}:{onUse:(template:ChecklistTemplate)=>void}) {
-  return <section><div className="section-toolbar"><div><h2>Modelos para alimentação e eventos</h2><p>O modelo de buffet pode ser utilizado como ponto de partida; os demais cards continuam demonstrativos.</p></div></div><div className="template-grid">{templates.map(template=><article className="template-card" key={template.title}><div className="template-icon" style={{background:template.color}}>{template.emoji}</div><span className="segment">{template.segment}</span><h3>{template.title}</h3><p>{template.sections?.length ? `${template.items} itens · ${template.sections.length} seções` : `${template.items} itens planejados · ainda não conectado ao banco`}</p><div><button className="secondary" onClick={()=>onUse(template)}>{template.sections?.length ? "Usar modelo" : "Criar checklist vazio"}</button></div></article>)}</div></section>}
+  return <section><div className="section-toolbar"><div><h2>Modelos para alimentação e eventos</h2><p>Escolha um modelo pronto como ponto de partida e ajuste os itens à sua operação.</p></div></div><div className="template-grid">{templates.filter(template=>template.sections?.length).map(template=><article className="template-card" key={template.title}><div className="template-icon" style={{background:template.color}}>{template.emoji}</div><span className="segment">{template.segment}</span><h3>{template.title}</h3><p>{template.sections?.length ? `${template.items} itens · ${template.sections.length} seções` : `${template.items} itens planejados · ainda não conectado ao banco`}</p><div><button className="secondary" onClick={()=>onUse(template)}>{template.sections?.length ? "Usar modelo" : "Criar checklist vazio"}</button></div></article>)}</div></section>}
 function organizationFormFromDetails(details:OrganizationDetails):OrganizationForm{return {name:details.name,commercial_email:details.commercial_email||"",whatsapp:details.whatsapp||"",instagram:details.instagram||"",phone:details.phone||"",address:details.address||""}}
 
 function OrganizationSettings({organizationId,details,viewerRole,loading,loadError,onSaved}:{organizationId:string;details:OrganizationDetails|null;viewerRole:string;loading:boolean;loadError:string;onSaved:(details:OrganizationDetails)=>void}){
