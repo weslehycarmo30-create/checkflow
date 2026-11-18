@@ -144,3 +144,4 @@ html,body{color-scheme:light}html[data-theme="dark"],html[data-theme="dark"] bod
 @media(max-width:430px){.report-kpis{grid-template-columns:1fr}}
 [data-theme="dark"] .report-row:hover{background:var(--surface)}
 [data-theme="dark"] .segmented button.selected{background:var(--primary-dark);color:#fff;border-color:var(--primary-dark)}
+.detail-header-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start}

@@ -5,6 +5,7 @@ import { PrivateRouteGuard } from "../../private-route-guard";
 import { initializeSupabaseBrowserClient } from "../../../lib/supabase";
 import { FeedbackMessage, useFeedback } from "../../feedback";
 import { selectReusableAssignment } from "../../../lib/pilot-execution-state.mjs";
+import { countItems, DUPLICATION_SECTION_SELECT, duplicateChecklistRow, duplicateItemRows, duplicateSectionRows } from "../../../lib/checklist-duplication.mjs";
 
 type Checklist = {
   id: string;
@@ -60,6 +61,7 @@ export default function ChecklistDetail({ checklistId }: { checklistId: string }
   const [dueAt,setDueAt] = useState("");
   const [busy,setBusy] = useState(false);
   const actionLock = useRef(false);
+  const [duplicateId,setDuplicateId] = useState("");
   const canManage = ["owner", "manager"].includes(role.trim().toLowerCase());
   const canEditStructureBase = canManage && checklist?.status === "draft" && !hasExecution && assignments.length === 0;
   const canEditStructure = canEditStructureBase && !structureCheckError;
@@ -165,6 +167,53 @@ clearFeedback();
       setEditing(false);
 showFeedback("Checklist atualizado e confirmado no banco.");
     } finally { endAction(); }
+  };
+
+  const duplicateChecklist = async () => {
+    if (!checklist || !userId || !beginAction()) return;
+    let newChecklistId = "";
+    try {
+      const supabase = await initializeSupabaseBrowserClient();
+      if (!supabase) { setError("Supabase não configurado."); return; }
+      // Read the full structure from the database so rules not shown on this screen (NC, photo, options) are copied too.
+      const { data: sourceSections, error: sourceError } = await supabase
+        .from("checklist_sections")
+        .select(DUPLICATION_SECTION_SELECT)
+        .eq("checklist_id", checklist.id)
+        .order("position");
+      if (sourceError || !sourceSections) { setError(sourceError?.message || "Não foi possível ler a estrutura para duplicar."); return; }
+      const { data: created, error: createError } = await supabase
+        .from("checklists")
+        .insert(duplicateChecklistRow(checklist, userId))
+        .select("id")
+        .single();
+      if (createError || !created) { setError(createError?.message || "A cópia não foi persistida."); return; }
+      newChecklistId = created.id;
+      const scope = { checklistId: created.id, organizationId: checklist.organization_id, userId };
+      const sectionRows = duplicateSectionRows(sourceSections, scope);
+      if (sectionRows.length) {
+        const { data: savedSections, error: sectionInsertError } = await supabase.from("checklist_sections").insert(sectionRows).select("id,position");
+        if (sectionInsertError || !savedSections || savedSections.length !== sectionRows.length) {
+          setError(`Cópia criada sem todas as seções (${sectionInsertError?.message || "contagem divergente"}). Revise o rascunho antes de usar.`);
+          return;
+        }
+        const itemRows = duplicateItemRows(sourceSections, new Map(savedSections.map(section => [section.position, section.id])), scope);
+        if (itemRows.length) {
+          const { data: savedItems, error: itemInsertError } = await supabase.from("checklist_items").insert(itemRows).select("id");
+          if (itemInsertError || !savedItems || savedItems.length !== countItems(sourceSections)) {
+            setError(`Cópia criada sem todos os itens (${itemInsertError?.message || "contagem divergente"}). Revise o rascunho antes de usar.`);
+            return;
+          }
+        }
+      }
+      showFeedback("Cópia criada como rascunho. Abrindo...");
+      window.location.href = `/checklists/${created.id}`;
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Falha ao duplicar o checklist.");
+    } finally {
+      endAction();
+      if (newChecklistId && !window.location.pathname.endsWith(newChecklistId)) setDuplicateId(newChecklistId);
+    }
   };
 
   const addSection = async () => {
@@ -368,7 +417,8 @@ showFeedback("Item removido.");
         <article className="detail-card">
           <div className="detail-heading">
             <div><span className="segment">{checklist.category || "Sem categoria"}</span><h1>{checklist.name}</h1><p>{checklist.description || "Sem descrição."}</p></div>
-            {canManage&&<button className="secondary" onClick={()=>setEditing(!editing)}>{editing?"Cancelar":"Editar"}</button>}
+            {canManage&&<div className="detail-header-actions"><button className="secondary" disabled={busy} onClick={duplicateChecklist} title="Cria um novo rascunho com as mesmas seções e itens">{busy?"Aguarde...":"Duplicar"}</button><button className="secondary" onClick={()=>setEditing(!editing)}>{editing?"Cancelar":"Editar"}</button></div>}
+            {duplicateId&&<p className="structure-lock">A cópia foi criada como rascunho. <a href={`/checklists/${duplicateId}`}>Abrir cópia</a></p>}
           </div>
           {editing&&<div className="edit-form"><label>Nome<input value={name} onChange={event=>setName(event.target.value)}/></label><label>Descrição<textarea value={description} onChange={event=>setDescription(event.target.value)}/></label><label>Categoria<input value={category} onChange={event=>setCategory(event.target.value)}/></label><button className="primary" disabled={!name.trim()||busy} onClick={saveChecklist}>{busy?"Salvando...":"Salvar alterações"}</button></div>}
         </article>
@@ -385,7 +435,7 @@ showFeedback("Item removido.");
             {section.checklist_items.length===0&&<p className="empty-state">Nenhum item nesta seção.</p>}
             {section.checklist_items.map(item=><div className="checklist-item" key={item.id}><span className="item-check item-unanswered" aria-label="Item ainda não executado"></span>{editingItemId===item.id?<div className="item-edit-form"><input aria-label="Texto do item" value={editingItemPrompt} disabled={busy} onChange={event=>setEditingItemPrompt(event.target.value)}/><select aria-label="Tipo do item" value={editingItemType} disabled={busy} onChange={event=>setEditingItemType(event.target.value)}><option value="checkbox">Checkbox</option><option value="yes_no">Sim ou não</option><option value="short_text">Texto curto</option><option value="long_text">Texto longo</option><option value="number">Número</option><option value="date">Data</option><option value="time">Horário</option><option value="photo">Fotografia</option><option value="rating">Avaliação 0 a 10</option></select><button className="secondary" disabled={busy||!editingItemPrompt.trim()} onClick={saveItem}>Salvar item</button><button className="secondary" disabled={busy} onClick={()=>setEditingItemId(null)}>Cancelar</button></div>:<><span><strong>{item.prompt}</strong><small>{item.required?"Obrigatório":"Opcional"} · {item.answer_type}</small></span>{canEditStructure&&<span className="item-actions"><button type="button" className="text-link" onClick={()=>startItemEdit(item)}>Editar item</button><button type="button" className="text-link danger-link" onClick={()=>removeItem(item)}>Remover</button></span>}</>}</div>)}
             {canManage&&<div className="inline-create item-create"><input value={itemPrompt[section.id]||""} disabled={busy} onChange={event=>setItemPrompt(current=>({...current,[section.id]:event.target.value}))} placeholder="Novo item obrigatório"/><select value={itemType[section.id]||"checkbox"} disabled={busy} onChange={event=>setItemType(current=>({...current,[section.id]:event.target.value}))} aria-label="Tipo de resposta"><option value="checkbox">Checkbox</option><option value="yes_no">Sim ou não</option><option value="short_text">Texto curto</option><option value="long_text">Texto longo</option><option value="number">Número</option><option value="date">Data</option><option value="time">Horário</option><option value="photo">Fotografia</option><option value="rating">Avaliação 0 a 10</option></select><button className="secondary" disabled={busy||!itemPrompt[section.id]?.trim()} onClick={()=>addItem(section.id)}>{busy?"Salvando...":"Adicionar item"}</button></div>}
-            {canManage&&!canEditStructure&&<p className="structure-lock">{structureLockReason}</p>}
+            {canManage&&!canEditStructure&&<p className="structure-lock">{structureLockReason} Para mudar a estrutura, use Duplicar e edite o rascunho.</p>}
           </div>)}
           {canManage&&<div className="inline-create section-create"><input value={sectionTitle} disabled={busy} onChange={event=>setSectionTitle(event.target.value)} placeholder="Nome da nova seção"/><button className="secondary" disabled={busy||!sectionTitle.trim()} onClick={addSection}>{busy?"Salvando...":"Adicionar seção"}</button></div>}
         </article>
