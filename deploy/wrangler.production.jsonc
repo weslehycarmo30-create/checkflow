@@ -1,0 +1,18 @@
+// Configuração de produção do Worker do CheckFlow na Cloudflare.
+// Sem segredos: as variáveis públicas do Supabase são passadas no deploy por
+// scripts/deploy-cloudflare.mjs (lidas do .env.local, nunca versionadas) e
+// SUPABASE_SERVICE_ROLE_KEY é um secret do Worker (wrangler secret put).
+{
+  "name": "checkflow-universal",
+  "main": "../dist/server/index.js",
+  "compatibility_date": "2026-09-03",
+  "compatibility_flags": ["nodejs_compat"],
+  "no_bundle": true,
+  "rules": [{ "type": "ESModule", "globs": ["**/*.js", "**/*.mjs"] }],
+  "assets": { "directory": "../dist/client", "binding": "ASSETS" },
+  // Usado por /_vinext/image (otimização de imagens).
+  "images": { "binding": "IMAGES" },
+  "observability": { "enabled": true },
+  // Exige a zona checkflow.tec.br na mesma conta Cloudflare (ver docs/DEPLOY_CLOUDFLARE.md).
+  "routes": [{ "pattern": "checkflow.tec.br", "custom_domain": true }]
+}
