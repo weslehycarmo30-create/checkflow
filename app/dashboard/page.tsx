@@ -176,6 +176,26 @@ const templates: ChecklistTemplate[] = [
     ]
   },
   {
+    emoji:"📦", title:"Conferência de bebidas e insumos", segment:"Bares e bartender", category:"Estoque", items:7, color:"#f0ecff",
+    sections:[
+      {title:"Recebimento",items:[
+        {prompt:"O pedido confere com a nota ou solicitação?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"As embalagens estão íntegras, sem vazamento?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true}
+      ]},
+      {title:"Controle",items:[
+        {prompt:"Registre a quantidade de cerveja, água e refrigerante.",answer_type:"number",required:true},
+        {prompt:"Os destilados críticos foram conferidos?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true}
+      ]},
+      {title:"Armazenamento e validade",items:[
+        {prompt:"Os produtos estão guardados no local correto?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true},
+        {prompt:"Os itens com validade próxima foram identificados?",answer_type:"yes_no",required:true,nonconformity_on_no:true,require_observation_on_failure:true}
+      ]},
+      {title:"Fecho",items:[
+        {prompt:"Nome do responsável pela conferência.",answer_type:"short_text",required:true}
+      ]}
+    ]
+  },
+  {
     emoji:"🔒", title:"Fechamento do bar", segment:"Bares e bartender", category:"Bar", items:7, color:"#fff0ee",
     sections:[
       {title:"Estoque",items:[
