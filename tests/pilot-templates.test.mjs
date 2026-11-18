@@ -11,11 +11,24 @@ const templates = templatesSource.split(/\n  \{\s*\n?\s*emoji:/).slice(1).map(bl
   hasSections: /sections:\[/.test(block),
 }));
 
-test("pilot ships the bar opening, bar closing and buffet templates", () => {
+test("pilot ships the bar opening, event operation, bar closing and buffet templates", () => {
   const titles = templates.map(template => template.title);
-  for (const title of ["Abertura do bar", "Fechamento do bar", "Montagem e desmontagem de buffet"]) {
+  for (const title of ["Abertura do bar", "Operação do evento", "Fechamento do bar", "Montagem e desmontagem de buffet"]) {
     assert.ok(titles.includes(title), `missing template: ${title}`);
   }
+});
+
+test("pilot keeps the template library within the five-template limit of the first event setup", () => {
+  assert.ok(templates.length <= 5, `pilot shows ${templates.length} templates; first event configuration allows at most 5`);
+});
+
+test("event operation template follows the first-event checklist and never requires photos", () => {
+  const block = templatesSource.slice(templatesSource.indexOf('title:"Operação do evento"'));
+  const operation = block.slice(0, block.indexOf("\n  },"));
+  assert.match(operation, /answer_type:"rating",required:true/);
+  assert.match(operation, /answer_type:"long_text",required:false/);
+  assert.match(operation, /answer_type:"time",required:true/);
+  assert.doesNotMatch(operation, /answer_type:"photo"/);
 });
 
 test("every pilot template has real sections and its declared item count matches its items", () => {
