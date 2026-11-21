@@ -21,7 +21,7 @@ Fazer o merge no `main` dos PRs empilhados, nesta ordem: #5 → #7 → #8 → #9
 
 ### 2. 👤 Conferir o banco de produção (Supabase `fzmzrtthmciaisygajba`)
 O site novo usa tabelas, colunas e regras das migrações mais recentes (dados da empresa, integridade de unidades, bloqueio de exclusão de unidade). Antes de publicar:
-1. Comparar `supabase/migrations/` com o que já está aplicado no remoto (`supabase migration list --linked`).
+1. Comparar `supabase/migrations/` com o que já está aplicado no remoto: rodar, no SQL Editor do Supabase, `supabase/preflight/prod_migration_parity_read_only.sql` (só leitura; `present = false` indica migração pendente) ou `supabase migration list --linked`.
 2. Aplicar o que faltar **na ordem**, seguindo `supabase/manual-rollout/` e os docs `docs/P1_REMOTE_MIGRATION_ROLLOUT_2026-09-07.md` e `docs/CHECKFLOW_START_PRODUCTION_PREFLIGHT.md`.
 3. Rodar as consultas só de leitura de `supabase/preflight/` e as `*_verify_read_only.sql`.
 
