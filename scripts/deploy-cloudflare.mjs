@@ -30,6 +30,9 @@ const publicKey = env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || env.NEXT_PUBLIC_SU
 const problems = [];
 if (!env.NEXT_PUBLIC_SUPABASE_URL) problems.push("NEXT_PUBLIC_SUPABASE_URL ausente (.env.local)");
 if (!publicKey) problems.push("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ausente (.env.local)");
+if (/^sb_secret_/.test(publicKey || "")) {
+  problems.push("a chave pública é uma sb_secret_ (chave secreta); use apenas a Publishable key");
+}
 if (/^eyJ/.test(publicKey || "") && /service_role/.test(Buffer.from((publicKey.split(".")[1] || ""), "base64url").toString("utf8"))) {
   problems.push("a chave pública parece ser uma service_role; use apenas a Publishable/anon key");
 }

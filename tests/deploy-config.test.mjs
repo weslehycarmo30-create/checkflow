@@ -29,6 +29,11 @@ test("deploy script is a dry-run unless --apply is passed and blocks a service_r
   assert.equal(packageJson.scripts["deploy:cloudflare"], "node scripts/deploy-cloudflare.mjs");
 });
 
+test("deploy script rejects secret keys in the public variable, in both the JWT and sb_secret_ formats", () => {
+  assert.match(script, /\/\^sb_secret_\/\.test\(publicKey/);
+  assert.match(script, /service_role/);
+});
+
 test("deploy script never reads or forwards the service role secret", () => {
   assert.doesNotMatch(script, /process\.env\.SUPABASE_SERVICE_ROLE_KEY|env\.SUPABASE_SERVICE_ROLE_KEY/);
   assert.doesNotMatch(script, /--var[^\n]*SERVICE_ROLE/);
