@@ -53,3 +53,11 @@ select migration, object, present from (
          not exists(select 1 from pg_policies where schemaname = 'public' and tablename = 'units' and cmd = 'DELETE')
 ) as checks
 order by migration, object;
+
+-- BLOCO 3: colunas de checklist_items que o "Duplicar checklist" (PR #11) copia. Todas devem aparecer (9 linhas).
+select column_name
+from information_schema.columns
+where table_schema = 'public' and table_name = 'checklist_items'
+  and column_name in ('prompt','answer_type','position','required','allow_not_applicable','options',
+                      'nonconformity_on_no','require_observation_on_failure','require_photo_on_failure')
+order by column_name;
