@@ -42,7 +42,7 @@ Disponíveis em **Modelos** e criados no banco com um clique (sem configuração
 
 ## Pendências conhecidas
 
-1. **E2E no navegador**: bloqueado pelo healthcheck do Storage do Supabase local no Docker/Windows (`docs/PILOTO_001_TEST_COVERAGE_MATRIX.md`). Cobertura atual é Node, SQL e roteiro humano.
+1. **E2E no navegador**: `npm run e2e:local` percorre o fluxo do piloto (modelo, duplicar, atribuir, executar no celular com NC e foto, histórico, plano de ação e relatório) contra o Supabase local. Fica fora do `npm test` porque exige o Docker.
 2. **Checagens P1 no Supabase remoto**: consultas só de leitura em `supabase/preflight/`; rodar apenas com autorização.
 3. **Day 0 humano**: execução completa no celular seguindo `docs/PILOTO_001_DAY0_TECH_CHECK.md`.
 4. Aviso de lint antigo: navegação interna com `window.location.href` (8 ocorrências, sem erro).
