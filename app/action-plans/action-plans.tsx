@@ -226,7 +226,7 @@ export default function ActionPlans() {
         })}</div>
       </section>}
     </div>
-    {error&&organizationId&&<p className="detail-message error">{error}</p>}
+    {error&&organizationId&&<p className="detail-message error" role="alert">{error}</p>}
     <FeedbackMessage feedback={feedback} onClose={clearFeedback}/>
   </main>;
 }

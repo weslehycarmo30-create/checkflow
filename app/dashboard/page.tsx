@@ -76,7 +76,8 @@ function Icon({name, size=20}:{name:IconName,size?:number}) { return <svg width=
 const nav = [
   ["Visão geral","home"],["Operação","check"],["Modelos","model"],["Planos de ação","task"],["Histórico","calendar"],["Equipe e unidades","team"],["Relatórios","chart"]
 ] as const;
-const managerOnlySections = new Set<string>(["Relatórios"]);
+// Executores não criam checklists nem consultam relatórios; o banco também recusa essas escritas.
+const managerOnlySections = new Set<string>(["Modelos","Relatórios"]);
 type ChecklistTemplateItem = {
   prompt: string;
   answer_type: "yes_no" | "number" | "short_text" | "long_text" | "rating" | "time";

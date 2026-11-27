@@ -49,9 +49,9 @@ test("CSV export quotes cells and neutralizes spreadsheet formulas", () => {
   assert.ok(row.endsWith('"75"'));
 });
 
-test("reports menu is shown only to owners and managers and uses real history", () => {
+test("models and reports menus are shown only to owners and managers; reports use real history", () => {
   assert.match(dashboard, /\["Relatórios","chart"\]/);
-  assert.match(dashboard, /managerOnlySections = new Set<string>\(\["Relatórios"\]\)/);
+  assert.match(dashboard, /managerOnlySections = new Set<string>\(\["Modelos","Relatórios"\]\)/);
   assert.match(dashboard, /nav\.filter\(\(\[label\]\)=>!managerOnlySections\.has\(label\)\|\|\(viewerRole!==""&&viewerRole!=="collaborator"\)\)/);
   assert.match(dashboard, /section==="Relatórios" && <OperationalReport history=\{history\}/);
   assert.match(dashboard, /section!=="Relatórios"&&<Generic/);
