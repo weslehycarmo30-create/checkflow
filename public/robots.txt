@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /checklists
+Disallow: /executions
+Disallow: /history
+Disallow: /action-plans
+Disallow: /crm
+
+Sitemap: https://checkflow.tec.br/sitemap.xml
