@@ -45,6 +45,13 @@ npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY --config deploy/wrangler.produ
 ```
 Cole a service_role do painel do Supabase quando o terminal pedir. Nunca coloque essa chave em arquivo versionado nem no frontend. Sem ela o site funciona, mas "convidar para a equipe" responde "Convites não configurados".
 
+### 5b. 👤 URLs de autenticação no Supabase
+No painel do Supabase, em *Authentication → URL Configuration*:
+- **Site URL:** `https://checkflow.tec.br`
+- **Redirect URLs:** adicionar `https://checkflow.tec.br/**`
+
+Sem isso, os links de confirmação de cadastro, recuperação de senha e convite de equipe voltam para o endereço antigo (ou são recusados). O convite abre `/auth?mode=reset`, onde a pessoa convidada define a senha. Teste convidando um e-mail seu antes do primeiro turno.
+
 ### 6. Ensaio
 ```bash
 npm run deploy:cloudflare

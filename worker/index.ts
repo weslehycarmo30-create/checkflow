@@ -61,21 +61,25 @@ const worker = {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return Response.json({ error: "Informe um e-mail válido." }, { status: 400 });
       if (!requestedRole) return Response.json({ error: "Papel de convite inválido." }, { status: 400 });
 
-      const userResponse = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      // Network failures and 5xx from Supabase are an outage, not a bad session or a lack of permission.
+      const upstream = (input: string, init: RequestInit) => fetch(input, init).catch(() => null);
+      const unavailable = () => Response.json({ error: "Serviço de autenticação indisponível. Tente novamente." }, { status: 502 });
+
+      const userResponse = await upstream(`${supabaseUrl}/auth/v1/user`, {
         headers: { apikey: publicKey, Authorization: `Bearer ${accessToken}` },
       });
+      if (!userResponse || userResponse.status >= 500) return unavailable();
       const user = userResponse.ok ? await userResponse.json().catch(() => null) as { id?: string } | null : null;
       if (!user?.id) return Response.json({ error: "Sessão inválida." }, { status: 401 });
 
       // The server derives the organization from the authenticated membership;
       // it never accepts an organization_id from the browser.
-      const membershipResponse = await fetch(
+      const membershipResponse = await upstream(
         `${supabaseUrl}/rest/v1/organization_members?select=organization_id,role&user_id=eq.${encodeURIComponent(user.id)}&active=is.true`,
         { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } },
       );
-      const memberships = membershipResponse.ok
-        ? await membershipResponse.json().catch(() => []) as Array<{ organization_id: string; role: "owner" | "manager" | "collaborator" }>
-        : [];
+      if (!membershipResponse?.ok) return unavailable();
+      const memberships = await membershipResponse.json().catch(() => []) as Array<{ organization_id: string; role: "owner" | "manager" | "collaborator" }>;
       if (memberships.length !== 1 || !["owner", "manager"].includes(memberships[0].role)) {
         return Response.json({ error: "Apenas owner ou manager com uma organização ativa pode convidar." }, { status: 403 });
       }
@@ -84,18 +88,23 @@ const worker = {
         return Response.json({ error: "Manager só pode convidar executor." }, { status: 403 });
       }
 
-      const inviteResponse = await fetch(`${supabaseUrl}/auth/v1/invite`, {
+      // GoTrue reads redirect_to from the query string. The invited person has no password yet,
+      // so the link opens the "set password" form of the auth screen.
+      const redirectTo = encodeURIComponent(`${url.origin}/auth?mode=reset`);
+      const inviteResponse = await upstream(`${supabaseUrl}/auth/v1/invite?redirect_to=${redirectTo}`, {
         method: "POST",
         headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ email, redirect_to: `${url.origin}/auth` }),
+        body: JSON.stringify({ email }),
       });
-      const invite = await inviteResponse.json().catch(() => ({})) as { user?: { id?: string }; msg?: string; message?: string };
-      const invitedUserId = invite.user?.id;
+      if (!inviteResponse || inviteResponse.status >= 500) return unavailable();
+      // GoTrue returns the user object itself; some responses wrap it in `user`.
+      const invite = await inviteResponse.json().catch(() => ({})) as { id?: string; user?: { id?: string }; msg?: string; message?: string };
+      const invitedUserId = invite.user?.id ?? invite.id;
       if (!inviteResponse.ok || !invitedUserId) {
         return Response.json({ error: invite.msg || invite.message || "Não foi possível criar o convite." }, { status: 400 });
       }
 
-      const createMembershipResponse = await fetch(`${supabaseUrl}/rest/v1/organization_members`, {
+      const createMembershipResponse = await upstream(`${supabaseUrl}/rest/v1/organization_members`, {
         method: "POST",
         headers: {
           apikey: serviceKey,
@@ -111,7 +120,7 @@ const worker = {
           created_by: user.id,
         }),
       });
-      if (!createMembershipResponse.ok) {
+      if (!createMembershipResponse?.ok) {
         return Response.json({ error: "Convite criado, mas a associação à organização falhou." }, { status: 502 });
       }
       return Response.json({ message: "Convite enviado e membro associado à organização." }, { status: 201 });
