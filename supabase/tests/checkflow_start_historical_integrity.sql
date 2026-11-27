@@ -73,8 +73,11 @@ insert into storage.objects (bucket_id, name, owner_id, metadata)
 values ('checkflow-evidence', '10000000-0000-0000-0000-0000000000c1/60000000-0000-0000-0000-0000000000c1/40000000-0000-0000-0000-0000000000c2/evidence.jpg', '00000000-0000-0000-0000-0000000000c3', '{"mimetype":"image/jpeg"}'::jsonb);
 insert into public.attachments (id, organization_id, execution_id, answer_id, storage_path, file_name, mime_type, size_bytes, created_by)
 values ('71000000-0000-0000-0000-0000000000c1', '10000000-0000-0000-0000-0000000000c1', '60000000-0000-0000-0000-0000000000c1', '70000000-0000-0000-0000-0000000000c2', '10000000-0000-0000-0000-0000000000c1/60000000-0000-0000-0000-0000000000c1/40000000-0000-0000-0000-0000000000c2/evidence.jpg', 'evidence.jpg', 'image/jpeg', 42, '00000000-0000-0000-0000-0000000000c3');
+-- Fixture with a fixed id: executors cannot insert non-conformities directly.
+reset role;
 insert into public.non_conformities (id, organization_id, execution_id, answer_id, item_id, executor_id, observation, priority, responsible_user_id, due_at, created_by)
 values ('80000000-0000-0000-0000-0000000000c1', '10000000-0000-0000-0000-0000000000c1', '60000000-0000-0000-0000-0000000000c1', '70000000-0000-0000-0000-0000000000c2', '40000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-0000000000c3', 'Temperatura fora da faixa', 'high', '00000000-0000-0000-0000-0000000000c2', now() + interval '2 days', '00000000-0000-0000-0000-0000000000c3');
+set local role authenticated;
 update public.checklist_executions set status='completed', completed_at=now(), conformity_percentage=50, summary='{"ok":1,"not_ok":1}'::jsonb where id='60000000-0000-0000-0000-0000000000c1';
 
 -- Manager adds the allowed operational action plan after completion.

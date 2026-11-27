@@ -25,7 +25,8 @@ select migration, object, present from (
     ('202609180002 checkbox obrigatório',     'validate_checkflow_completion_answers'),
     ('202610020001 unidades por empresa',     'lock_checkflow_tenant_link_keys'),
     ('202610020001 unidades por empresa',     'validate_checkflow_unit_tenant_integrity'),
-    ('202610020001 unidades por empresa',     'prevent_checkflow_unit_tenant_move')
+    ('202610020001 unidades por empresa',     'prevent_checkflow_unit_tenant_move'),
+    ('20261127220000 escritas restritas',     'prevent_checkflow_cross_company_membership')
   ) as t(m, f)
 
   union all
@@ -36,14 +37,14 @@ select migration, object, present from (
     ('202609040003 planos de ação',           'sync_checkflow_action_plan_non_conformity'),
     ('202609180002 checkbox obrigatório',     'validate_checkflow_completion_answers'),
     ('202610020001 unidades por empresa',     'aa_lock_checkflow_tenant_link_keys'),
-    ('202610020001 unidades por empresa',     'validate_checkflow_unit_tenant_integrity')
+    ('202610020001 unidades por empresa',     'validate_checkflow_unit_tenant_integrity'),
+    ('20261127220000 escritas restritas',     'prevent_checkflow_cross_company_membership')
   ) as t(m, g)
 
   union all
   select m, 'policy ' || pol,
          exists(select 1 from pg_policies where policyname = pol)
   from (values
-    ('202609040003 planos de ação',       'checkflow_evidence_unlinked_uploader_delete'),
     ('20261017150310 unidades sem delete', 'unit_manager_insert'),
     ('20261017150310 unidades sem delete', 'unit_manager_update')
   ) as t(m, pol)
@@ -51,6 +52,10 @@ select migration, object, present from (
   union all
   select '20261017150310 unidades sem delete', 'units sem policy de DELETE',
          not exists(select 1 from pg_policies where schemaname = 'public' and tablename = 'units' and cmd = 'DELETE')
+
+  union all
+  select '20261127220000 escritas restritas', 'não conformidades sem insert direto do executor',
+         not exists(select 1 from pg_policies where policyname = 'collaborator_nonconformity_insert')
 ) as checks
 order by migration, object;
 

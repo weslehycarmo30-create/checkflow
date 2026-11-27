@@ -93,12 +93,14 @@ function upstream(overrides = {}, calls = []) {
     const url = new URL(String(input));
     const step = url.pathname === "/auth/v1/user" ? "user"
       : url.pathname === "/auth/v1/invite" ? "invite"
-      : init.method === "POST" ? "link" : "membership";
+      : init.method === "POST" ? "link"
+      : url.searchParams.get("user_id") === "eq.owner-a" ? "membership" : "invited";
     calls.push(step);
     if (overrides[step]) return overrides[step]();
     if (step === "user") return Response.json({ id: "owner-a" });
     if (step === "membership") return Response.json([{ organization_id: "org-a", role: "owner" }]);
     if (step === "invite") return Response.json({ id: "new-person" });
+    if (step === "invited") return Response.json([]);
     return new Response(null, { status: 201 });
   };
 }
@@ -141,4 +143,22 @@ test("rejected sessions and rejected invitations keep their own status and link 
   assert.equal(existing.status, 400);
   assert.match((await existing.json()).error, /already been registered/);
   assert.equal(calls.includes("link"), false);
+});
+
+test("a pending invitee of another company is not linked", { concurrency: false }, async () => {
+  const calls = [];
+  const response = await inviteRequest(await loadWorker(), upstream({ invited: () => Response.json([{ organization_id: "org-b" }]) }, calls));
+  assert.equal(response.status, 409);
+  assert.match((await response.json()).error, /outra empresa/);
+  assert.equal(calls.includes("link"), false);
+});
+
+test("nobody is linked when the invitee's memberships cannot be checked", { concurrency: false }, async () => {
+  const worker = await loadWorker();
+  for (const failure of [offline, serverError]) {
+    const calls = [];
+    const response = await inviteRequest(worker, upstream({ invited: failure }, calls));
+    assert.equal(response.status, 502);
+    assert.equal(calls.includes("link"), false);
+  }
 });

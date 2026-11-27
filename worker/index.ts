@@ -104,6 +104,20 @@ const worker = {
         return Response.json({ error: invite.msg || invite.message || "Não foi possível criar o convite." }, { status: 400 });
       }
 
+      // An invitation still pending elsewhere is accepted again by GoTrue. Linking that person
+      // here too would attach them to a second company without their consent.
+      const invitedResponse = await upstream(
+        `${supabaseUrl}/rest/v1/organization_members?select=organization_id&user_id=eq.${encodeURIComponent(invitedUserId)}&active=is.true`,
+        { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } },
+      );
+      const invitedMemberships = invitedResponse?.ok
+        ? await invitedResponse.json().catch(() => null) as Array<{ organization_id: string }> | null
+        : null;
+      if (!invitedMemberships) return unavailable();
+      if (invitedMemberships.some(membership => membership.organization_id !== requester.organization_id)) {
+        return Response.json({ error: "Este e-mail já está vinculado a outra empresa." }, { status: 409 });
+      }
+
       const createMembershipResponse = await upstream(`${supabaseUrl}/rest/v1/organization_members`, {
         method: "POST",
         headers: {
