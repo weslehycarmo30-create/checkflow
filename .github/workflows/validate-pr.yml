@@ -17,6 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The release precheck verifies that an approved commit is an ancestor of HEAD.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:

@@ -5,7 +5,10 @@ import { createServer } from "node:net";
 import test from "node:test";
 import { chromium } from "playwright-core";
 
-const chromePath = process.env.CHECKFLOW_CHROME_PATH || "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+// Default install paths of Google Chrome: Windows machines and the Linux CI runner.
+const chromePath = process.env.CHECKFLOW_CHROME_PATH || (process.platform === "win32"
+  ? "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+  : "/usr/bin/google-chrome");
 
 async function getAvailablePort() {
   const server = createServer();
@@ -42,7 +45,11 @@ async function startLocalServer() {
 
 test("recovery URL hydrates deterministically and then shows the reset form", { timeout: 30_000 }, async () => {
   const { child, origin } = await startLocalServer();
-  const browser = await chromium.launch({ headless: true, executablePath: chromePath });
+  // Without a browser the server must still stop, or the test run never exits.
+  const browser = await chromium.launch({ headless: true, executablePath: chromePath }).catch(error => {
+    child.kill();
+    throw error;
+  });
   const page = await browser.newPage();
   const hydrationFailures = [];
   page.on("console", message => {
