@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { PrivateRouteGuard } from "../../private-route-guard";
 import { initializeSupabaseBrowserClient } from "../../../lib/supabase";
 import { FeedbackMessage, useFeedback } from "../../feedback";
-import { executionProgress, executionSectionsFromSnapshot, isAnswered, requiredExecutionItems } from "../../../lib/pilot-execution-state.mjs";
+import { createSerialQueue, executionProgress, executionSectionsFromSnapshot, isAnswered, requiredExecutionItems, retryOnLockConflict } from "../../../lib/pilot-execution-state.mjs";
 import { operationalFailure, safeOperationalMessage } from "../../../lib/operational-telemetry.mjs";
 
 type Assignment = {
@@ -47,6 +47,9 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
   const [savingItems,setSavingItems] = useState<string[]>([]);
   const [photoUrls,setPhotoUrls] = useState<Record<string,string>>({});
   const actionLock = useRef(false);
+  const writeQueue = useRef(createSerialQueue());
+  // Quick taps must not race each other for the execution lock.
+  function write<T>(operation:()=>PromiseLike<T>) { return writeQueue.current(()=>retryOnLockConflict(operation)); }
   const items = useMemo(()=>sections.flatMap(section=>section.checklist_items),[sections]);
   const answeredCount = items.filter(item => {
     return isAnswered(answers[item.id], item.answer_type);
@@ -110,7 +113,8 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
       else {
         setAnswers(Object.fromEntries((answerData || []).map(answer=>[answer.item_id,answer.value as AnswerValue])));
         setObservations(Object.fromEntries((answerData || []).map(answer=>[answer.item_id,answer.observation || ""])));
-        const photoAnswers = (answerData || []).filter(answer=>typeof answer.value==="string" && answer.value);
+        const photoItemIds = new Set(((persistedSections || []) as Section[]).flatMap(section=>section.checklist_items).filter(item=>item.answer_type==="photo").map(item=>item.id));
+        const photoAnswers = (answerData || []).filter(answer=>photoItemIds.has(answer.item_id) && typeof answer.value==="string" && answer.value);
         const signedEntries = await Promise.all(photoAnswers.map(async answer => {
           const { data: signed } = await supabase.storage.from("checkflow-evidence").createSignedUrl(answer.value as string, 3600);
           return signed?.signedUrl ? [answer.item_id,signed.signedUrl] as const : null;
@@ -177,10 +181,10 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     setBusy(true); setError("");
     const supabase = await initializeSupabaseBrowserClient();
     if (!supabase) { setBusy(false); actionLock.current = false; return; }
-    const { data, error: statusError } = await supabase.from("checklist_executions").update({
+    const { data, error: statusError } = await write(()=>supabase.from("checklist_executions").update({
       status,
       paused_at: status==="paused" ? new Date().toISOString() : null,
-    }).eq("id", execution.id).select("id").maybeSingle();
+    }).eq("id", execution.id).select("id").maybeSingle());
     if (statusError || !data) setError(statusError?.message || "A alteração de status não foi persistida.");
     else {
       setExecution({...execution,status});
@@ -197,7 +201,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     try {
     const supabase = await initializeSupabaseBrowserClient();
     if (!supabase) { reportFailure("ANSWER_SAVE_FAILED", "salvar a resposta", "item", itemId); return; }
-    const { data, error: answerError } = await supabase.from("execution_answers").upsert({
+    const { data, error: answerError } = await write(()=>supabase.from("execution_answers").upsert({
       organization_id: assignment.organization_id,
       execution_id: execution.id,
       item_id: itemId,
@@ -206,7 +210,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
       is_conforming: metadata?.isConforming ?? null,
       answered_at: new Date().toISOString(),
       created_by: userId,
-    }, { onConflict: "execution_id,item_id" }).select("id").maybeSingle();
+    }, { onConflict: "execution_id,item_id" }).select("id").maybeSingle());
     if (answerError || !data) reportFailure("ANSWER_SAVE_FAILED", "salvar a resposta", "item", itemId, answerError);
     else {
       setAnswers(current=>({...current,[itemId]:value}));
@@ -226,25 +230,23 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     setSavingItems(current=>[...current,item.id]);
     setError("");
     clearFeedback();
+    try {
     const supabase = await initializeSupabaseBrowserClient();
-    if (!supabase) {
-      setSavingItems(current=>current.filter(id=>id!==item.id));
-      setError("Supabase não configurado.");
-      return;
-    }
+    if (!supabase) { setError("Supabase não configurado."); return; }
     const existing = nonConformityItems.includes(item.id);
-    const { error:occurrenceError } = await supabase.rpc("record_checkflow_non_conformity", {
+    const { error:occurrenceError } = await write(()=>supabase.rpc("record_checkflow_non_conformity", {
       p_execution_id: execution.id,
       p_item_id: item.id,
       p_observation: observation,
-    });
+    }));
     if (occurrenceError) setError(occurrenceError.message || "A ocorrência não foi registrada.");
     else {
       setAnswers(current=>({...current,[item.id]:"Não"}));
       setNonConformityItems(current=>current.includes(item.id)?current:[...current,item.id]);
       showFeedback(existing?"Não conformidade atualizada.":"Não conformidade registrada automaticamente.");
     }
-    setSavingItems(current=>current.filter(id=>id!==item.id));
+    } catch (error) { reportFailure("ANSWER_SAVE_FAILED", "registrar a não conformidade", "item", item.id, error); }
+    finally { setSavingItems(current=>current.filter(id=>id!==item.id)); }
   };
 
   const uploadPhoto = async (itemId:string,file:File | null) => {
@@ -279,14 +281,14 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
       reportFailure("UPLOAD_FAILED", "enviar a fotografia", "item", itemId, uploadError);
       return;
     }
-    const { error: recordError } = await supabase.rpc("record_checkflow_execution_photo_evidence", {
+    const { error: recordError } = await write(()=>supabase.rpc("record_checkflow_execution_photo_evidence", {
       p_execution_id: execution.id,
       p_item_id: itemId,
       p_storage_path: storagePath,
       p_file_name: file.name,
       p_mime_type: file.type,
       p_size_bytes: file.size,
-    });
+    }));
     if (recordError) {
       // Preserve uploads even after a lost RPC response: the link may exist.
       operationalFailure({ operation:"vincular fotografia", entity:"item", entityId:itemId, organizationId:assignment.organization_id, errorCode:"UPLOAD_FAILED", error:recordError });
@@ -324,12 +326,12 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     }).length;
     const conformity = items.length ? Number((conformingCount / items.length * 100).toFixed(2)) : 100;
     const completedAt = new Date().toISOString();
-    const { data, error: completionError } = await supabase.from("checklist_executions").update({
+    const { data, error: completionError } = await write(()=>supabase.from("checklist_executions").update({
       status: "completed",
       completed_at: completedAt,
       conformity_percentage: conformity,
       summary: { total_items: items.length, answered_items: answeredCount, required_complete: true },
-    }).eq("id", execution.id).select("id").maybeSingle();
+    }).eq("id", execution.id).select("id").maybeSingle());
     if (completionError || !data) reportFailure("EXECUTION_COMPLETE_FAILED", "concluir o checklist", "execution", execution.id, completionError);
     else {
       setExecution({...execution,status:"completed",completed_at:completedAt});

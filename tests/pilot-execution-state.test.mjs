@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
-import { executionProgress, executionSectionsFromSnapshot, isAnswered, mutationFailureMessage, requiredExecutionItems, selectReusableAssignment } from "../lib/pilot-execution-state.mjs";
+import { createSerialQueue, retryOnLockConflict, executionProgress, executionSectionsFromSnapshot, isAnswered, mutationFailureMessage, requiredExecutionItems, selectReusableAssignment } from "../lib/pilot-execution-state.mjs";
 
 test("execution state treats rating zero as persisted and computes mobile progress", () => {
   const items = [{ id: "zero", required: true, answer_type: "rating" }, { id: "note", required: true, answer_type: "long_text" }];
@@ -49,8 +49,14 @@ test("optional checkbox false does not block completion, while yes/no false rema
 });
 
 test("an existing execution renders its persisted snapshot rather than live checklist sections", () => {
-  const snapshotSections = [{ id: "saved", checklist_items: [{ id: "required", required: true }] }];
-  assert.equal(executionSectionsFromSnapshot({ version: 1, sections: snapshotSections }), snapshotSections);
+  // Shape written by public.build_execution_snapshot: items live under "items".
+  const snapshotSections = [
+    { id: "second", position: 1, items: [{ id: "b", position: 0 }] },
+    { id: "saved", position: 0, items: [{ id: "optional", position: 1 }, { id: "required", position: 0, required: true }] },
+  ];
+  const sections = executionSectionsFromSnapshot({ version: 1, sections: snapshotSections });
+  assert.deepEqual(sections.map(section => [section.id, section.checklist_items.map(item => item.id)]), [["saved", ["required", "optional"]], ["second", ["b"]]]);
+  assert.deepEqual(executionSectionsFromSnapshot({ version: 1, sections: [{ id: "empty", position: 0 }] })[0].checklist_items, []);
   assert.equal(executionSectionsFromSnapshot({ version: 1 }), null);
 });
 
@@ -73,4 +79,52 @@ test("completed cycles are never selected for reuse", () => {
 test("post-persistence refresh failure is fail-safe and does not invite a duplicate retry", () => {
   assert.match(mutationFailureMessage(true, "Plano criado"), /Atualize antes de tentar novamente/);
   assert.match(mutationFailureMessage(false, "Criar o plano"), /Verifique a conexão/);
+});
+
+test("the snapshot key written by the database matches what the screen reads", async () => {
+  const sql = await readFile(new URL("../supabase/migrations/202608260002_execution_historical_snapshot.sql", import.meta.url), "utf8");
+  assert.match(sql, /'items', coalesce\(\(/);
+});
+
+test("writes run one at a time and a failure does not block the next", async () => {
+  const queue = createSerialQueue();
+  const events = [];
+  let running = 0;
+  const job = (name, fail) => async () => {
+    assert.equal(running, 0, "two writes overlapped");
+    running += 1;
+    await new Promise(resolve => setTimeout(resolve, 5));
+    running -= 1;
+    events.push(name);
+    if (fail) throw new Error(name);
+    return name;
+  };
+  const results = await Promise.allSettled([queue(job("a")), queue(job("b", true)), queue(job("c"))]);
+  assert.deepEqual(events, ["a", "b", "c"]);
+  assert.deepEqual(results.map(result => result.status), ["fulfilled", "rejected", "fulfilled"]);
+});
+
+test("only lock conflicts are retried, and only a few times", async () => {
+  const wait = async () => {};
+  const attempts = outcomes => { let count = 0; return { run: () => Promise.resolve(outcomes[Math.min(count++, outcomes.length - 1)]), count: () => count }; };
+  const conflict = { error: { code: "55P03" } };
+
+  const recovers = attempts([conflict, conflict, { error: null }]);
+  assert.deepEqual(await retryOnLockConflict(recovers.run, { wait }), { error: null });
+  assert.equal(recovers.count(), 3);
+
+  const stuck = attempts([conflict]);
+  assert.deepEqual(await retryOnLockConflict(stuck.run, { wait }), conflict);
+  assert.equal(stuck.count(), 4);
+
+  const denied = attempts([{ error: { code: "42501" } }]);
+  await retryOnLockConflict(denied.run, { wait });
+  assert.equal(denied.count(), 1);
+});
+
+test("the execution screen sends every write through the queue and signs only photo answers", async () => {
+  const screen = await readFile(new URL("../app/executions/[assignmentId]/checklist-execution.tsx", import.meta.url), "utf8");
+  assert.equal((screen.match(/await write\(\(\)=>supabase/g) ?? []).length, 5);
+  assert.doesNotMatch(screen, /await supabase\.(rpc\(|from\("checklist_executions"\)\.update|from\("execution_answers"\)\.upsert)/);
+  assert.match(screen, /photoItemIds\.has\(answer\.item_id\)/);
 });
