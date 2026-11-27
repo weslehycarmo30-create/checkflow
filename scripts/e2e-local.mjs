@@ -39,9 +39,15 @@ if (build.status !== 0) { console.error(redact(build.stderr).slice(-2000)); proc
 const server = spawn(process.execPath, ["scripts/start-local.mjs"], { cwd: root, env: { ...env, PORT: "3000" }, stdio: "ignore" });
 try {
   for (let attempt = 0; attempt < 100 && !(await isUp(`${appURL}/auth`)); attempt += 1) await new Promise(done => setTimeout(done, 200));
-  const run = spawnSync(process.execPath, ["tests/checkflow-pilot-flow-local-e2e.mjs"], { cwd: root, env, encoding: "utf8", timeout: 300_000 });
-  console.log(redact(run.stdout), redact(run.stderr).slice(-2000));
-  process.exitCode = run.status ?? 1;
+  const selected = process.argv.slice(2);
+  const scripts = ["tests/checkflow-pilot-flow-local-e2e.mjs", "tests/checkflow-roles-offline-local-e2e.mjs"].filter(script => !selected.length || selected.some(name => script.includes(name)));
+  for (const script of scripts) {
+    console.log(`
+# ${script}`);
+    const run = spawnSync(process.execPath, [script], { cwd: root, env, encoding: "utf8", timeout: 300_000 });
+    console.log(redact(run.stdout), redact(run.stderr).slice(-2000));
+    if (run.status !== 0) process.exitCode = 1;
+  }
 } finally {
   server.kill();
 }

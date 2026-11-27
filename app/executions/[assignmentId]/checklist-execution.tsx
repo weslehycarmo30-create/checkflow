@@ -398,7 +398,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
         {execution.status!=="completed"&&<section className="execution-card finish-card"><button className="primary" disabled={busy||savingItems.length>0||requiredMissing.length>0||execution.status==="paused"} onClick={finishExecution}>{busy?"Finalizando...":savingItems.length>0?"Salvando respostas...":"Finalizar checklist"}</button>{requiredMissing.length>0&&<p>{requiredMissing.length} item(ns) obrigatório(s) ainda pendente(s).</p>}</section>}
       </>}
     </div>}
-    {error&&assignment&&<p className="detail-message error">{error}</p>}
+    {error&&assignment&&<p className="detail-message error" role="alert">{error}</p>}
     <FeedbackMessage feedback={feedback} onClose={clearFeedback}/>
   </main>;
 }
