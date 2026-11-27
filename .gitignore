@@ -46,3 +46,6 @@ next-env.d.ts
 
 # local exports
 *.zip
+
+# wrangler dev local usando deploy/wrangler.production.jsonc
+/deploy/.wrangler/
