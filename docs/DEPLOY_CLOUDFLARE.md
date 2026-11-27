@@ -51,6 +51,12 @@ npm run deploy:cloudflare
 ```
 Faz o build, valida o pacote e termina em `--dry-run: exiting now` sem publicar.
 
+Opcional, para ver o Worker rodando na sua máquina antes de publicar (valores fictícios, nada remoto):
+```bash
+npx wrangler dev --config deploy/wrangler.production.jsonc --local --compatibility-date 2026-05-22 --var NEXT_PUBLIC_SUPABASE_URL:https://exemplo.supabase.co --var NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:sb_publishable_exemplo
+```
+A opção `--compatibility-date` é só para o ensaio local: o runtime do wrangler instalado aqui vai até 2026-05-22 e a config de produção pede 2026-09-03. Em outro terminal: `npm run verify:deploy -- http://127.0.0.1:8787` (sem o secret, os convites aparecem como aviso).
+
 ### 7. 👤 Publicar
 ```bash
 npm run deploy:cloudflare -- --apply
@@ -58,6 +64,12 @@ npm run deploy:cloudflare -- --apply
 O primeiro deploy cria o Worker, anexa o domínio `checkflow.tec.br` e emite o certificado HTTPS.
 
 ### 8. Verificação pós-publicação
+Primeiro a conferência automática (só leitura, não imprime chaves):
+```bash
+npm run verify:deploy
+```
+Ela confere HTTPS, página inicial, login, a configuração pública do Supabase (falha se uma chave secreta estiver exposta), se o secret dos convites está configurado e se `/crm` está bloqueado. Depois, à mão:
+
 - `https://checkflow.tec.br/` abre a landing; `https://checkflow.tec.br/auth` abre o login.
 - `https://checkflow.tec.br/api/supabase-config` responde `200` com a URL e a chave **pública** (nunca a service_role).
 - Entrar com uma conta de teste, abrir **Modelos**, criar um checklist com "Usar modelo" e conferir que aparece em **Operação**.

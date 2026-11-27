@@ -46,9 +46,9 @@ const worker = {
     if (url.pathname === "/api/team-invitations") {
       if (request.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
 
-      const supabaseUrl = env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-      const publicKey = (env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? env.NEXT_PUBLIC_SUPABASE_ANON_KEY)?.trim();
-      const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+      const supabaseUrl = env?.NEXT_PUBLIC_SUPABASE_URL?.trim();
+      const publicKey = (env?.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? env?.NEXT_PUBLIC_SUPABASE_ANON_KEY)?.trim();
+      const serviceKey = env?.SUPABASE_SERVICE_ROLE_KEY?.trim();
       const accessToken = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
       if (!supabaseUrl || !publicKey || !serviceKey) {
         return Response.json({ error: "Convites não configurados no ambiente." }, { status: 503 });
@@ -118,10 +118,10 @@ const worker = {
     }
 
     if (url.pathname === "/api/supabase-config") {
-      const supabaseUrl = env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+      const supabaseUrl = env?.NEXT_PUBLIC_SUPABASE_URL?.trim();
       const supabasePublicKey = (
-        env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-        env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+        env?.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+        env?.NEXT_PUBLIC_SUPABASE_ANON_KEY
       )?.trim();
       return Response.json(
         supabaseUrl && supabasePublicKey

@@ -12,6 +12,7 @@
     "start": "node scripts/start-local.mjs",
     "test": "npm run build && node --test tests/*.test.mjs",
     "deploy:cloudflare": "node scripts/deploy-cloudflare.mjs",
+    "verify:deploy": "node scripts/verify-deploy.mjs",
     "validate:artifact": "bash scripts/validate-artifact.sh",
     "lint": "node scripts/run-local.mjs -- eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "node scripts/run-local.mjs -- drizzle-kit generate"
