@@ -79,6 +79,9 @@ export async function initializeSupabaseBrowserClient(): Promise<SupabaseClient 
             }
             return browserClient;
           }
+        } else {
+          // Um corpo não lido mantém a requisição aberta no navegador.
+          await response.body?.cancel();
         }
       } catch {
         // Repete chamadas temporariamente interrompidas pela rede móvel.

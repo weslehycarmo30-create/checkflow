@@ -78,3 +78,8 @@ test("the Worker answers instead of crashing when the runtime provides no bindin
   const worker = await readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
   assert.doesNotMatch(worker, /env\.(NEXT_PUBLIC_SUPABASE_[A-Z_]+|SUPABASE_SERVICE_ROLE_KEY)/);
 });
+
+test("the browser client consumes failed config responses so requests do not stay open", async () => {
+  const client = await readFile(new URL("../lib/supabase.ts", import.meta.url), "utf8");
+  assert.match(client, /await response\.body\?\.cancel\(\);/);
+});
