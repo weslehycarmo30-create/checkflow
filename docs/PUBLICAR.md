@@ -52,7 +52,7 @@ O Worker `checkflow-universal`, que a publicação usa, hoje mostra a landing no
 | #22 | respostas e pendências coerentes, aviso do limite de 50 e reenvio de convite | antes do #23 |
 | #23 | tela de pessoas: remover, reativar, mudar papel e reenviar convite | depois do #22 |
 
-Nenhum deles tem migração. Juntados localmente em 27/11, passaram 154/154 e o fluxo no navegador 34/34 (banco local, pacotes do `main` atual com o #22 e o #23, atualizados pelo #24). Cada PR precisa estar com a checagem `validate` verde antes do merge.
+Nenhum deles tem migração. Os três juntados localmente em 27/11 passaram 154/154 e o fluxo no navegador 34/34 (banco local). Cada PR precisa estar com a checagem `validate` verde antes do merge.
 
 ## O que falta, em ordem (👤 = só você pode fazer)
 
