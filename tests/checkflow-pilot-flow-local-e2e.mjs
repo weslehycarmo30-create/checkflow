@@ -169,6 +169,21 @@ try {
     await worker.locator("img").last().waitFor();
   });
 
+  await step("correção reprovada continua contando como pendência aberta", manager, async () => {
+    await manager.reload({ waitUntil: "networkidle" });
+    const reject = manager.getByRole("button", { name: "Reprovar" });
+    await reject.click();
+    await reject.waitFor({ state: "detached" });
+    await manager.goto(`${appURL}/dashboard`, { waitUntil: "networkidle" });
+    await manager.getByText("Checklists operacionais").waitFor();
+    const pending = manager.getByRole("button", { name: "Abrir Planos de ação: Não conformidades abertas" }).locator("strong");
+    assert.equal(await pending.innerText(), "1", "a pendência reprovada sumiu do painel");
+    await worker.goto(`${appURL}/action-plans`, { waitUntil: "networkidle" });
+    await worker.locator('label.photo-upload input[type="file"]').setInputFiles(photo);
+    await worker.getByText("Correção enviada para validação do gestor.").waitFor();
+    await manager.goto(`${appURL}/action-plans`, { waitUntil: "networkidle" });
+  });
+
   await step("gestor aprova a correção", manager, async () => {
     await manager.reload({ waitUntil: "networkidle" });
     const approve = manager.getByRole("button", { name: "Aprovar correção" });
