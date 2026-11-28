@@ -7,9 +7,10 @@ import { chromium } from "playwright-core";
 const appURL = process.env.CHECKFLOW_E2E_BASE_URL || "http://127.0.0.1:3000";
 const apiURL = process.env.SUPABASE_LOCAL_URL || "http://127.0.0.1:55421";
 const service = process.env.SUPABASE_LOCAL_SERVICE_KEY;
+const anon = process.env.SUPABASE_LOCAL_ANON_KEY;
 const chromePath = process.env.CHECKFLOW_CHROME_PATH || "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const local = url => ["127.0.0.1", "localhost"].includes(new URL(url).hostname);
-if (!service) throw new Error("Defina SUPABASE_LOCAL_SERVICE_KEY (chave do stack local).");
+if (!service || !anon) throw new Error("Defina SUPABASE_LOCAL_SERVICE_KEY e SUPABASE_LOCAL_ANON_KEY (chaves do stack local).");
 if (!local(appURL) || !local(apiURL)) throw new Error("Este teste só roda contra endereços locais.");
 
 const run = Date.now();
@@ -31,6 +32,20 @@ const [{ organization_id: organizationId }] = await rows(`organization_members?s
 for (const [member, role] of [[manager, "manager"], [executor, "collaborator"]]) {
   await admin("/rest/v1/organization_members", { organization_id: organizationId, user_id: member.id, role, active: true, created_by: owner.id });
 }
+
+// O servidor local não passa segredos ao Worker. Os convites do navegador são atendidos pelo
+// Worker do build, neste processo, apontando para o Supabase local.
+const { default: worker } = await import(new URL("../dist/server/index.js", import.meta.url).href);
+const workerEnv = { NEXT_PUBLIC_SUPABASE_URL: apiURL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: anon, SUPABASE_SERVICE_ROLE_KEY: service };
+const useWorker = page => page.route("**/api/team-invitations", async route => {
+  const request = route.request();
+  const response = await worker.fetch(
+    new Request(request.url(), { method: request.method(), headers: { authorization: (await request.headerValue("authorization")) || "", "content-type": "application/json" }, body: request.postData() }),
+    workerEnv, { waitUntil() {}, passThroughOnException() {} });
+  await route.fulfill({ status: response.status, contentType: "application/json", body: await response.text() });
+});
+const mailbox = process.env.SUPABASE_LOCAL_MAIL_URL || "http://127.0.0.1:55424";
+const mailCount = async address => (await (await fetch(`${mailbox}/api/v1/search?query=${encodeURIComponent("to:" + address)}`)).json()).messages?.length || 0;
 
 const browser = await chromium.launch({ headless: true, executablePath: chromePath });
 const steps = [];
@@ -122,7 +137,7 @@ try {
   await step("gestor convida apenas executor (sem escolha de papel)", lead, async () => {
     await open(lead, "/dashboard");
     await nav(lead, "Equipe e unidades").click();
-    await lead.getByRole("button", { name: "Enviar convite" }).waitFor();
+    await lead.getByRole("button", { name: "Enviar convite", exact: true }).waitFor();
     assert.equal(await lead.getByLabel("Papel").count(), 0);
     assert.equal(await nav(lead, "Relatórios").count(), 1);
   });
@@ -147,7 +162,7 @@ try {
     await phone.getByRole("button", { name: "Abrir menu" }).click();
     await nav(phone, "Equipe e unidades").click();
     await phone.getByText("Visualização somente leitura.", { exact: false }).waitFor();
-    assert.equal(await phone.getByRole("button", { name: "Enviar convite" }).count(), 0);
+    assert.equal(await phone.getByRole("button", { name: "Enviar convite", exact: true }).count(), 0);
   });
 
   const offline = value => phone.context().setOffline(value);
@@ -318,8 +333,57 @@ try {
     await other.getByText("mais de 50 conclusões", { exact: false }).waitFor({ timeout: 5_000 });
   });
 
-  await step("executor desativado perde o acesso", phone, async () => {
-    await admin(`/rest/v1/organization_members?user_id=eq.${executor.id}&organization_id=eq.${organizationId}`, { active: false }, "PATCH");
+  const team = async page => {
+    await open(page, "/dashboard");
+    await nav(page, "Equipe e unidades").click();
+    await page.locator(".member-row").first().waitFor();
+  };
+  const person = (page, name) => page.locator(".member-row", { hasText: name });
+  const membership = async id => (await rows(`organization_members?select=role,active&user_id=eq.${id}&organization_id=eq.${organizationId}`))[0];
+
+  await step("dono convida e reenvia o convite a quem ainda não ativou", boss, async () => {
+    await useWorker(boss);
+    await team(boss);
+    const address = `convidado-${run}@checkflow.test`;
+    await boss.getByLabel("E-mail").fill(address);
+    await boss.getByRole("button", { name: "Enviar convite", exact: true }).click();
+    await boss.getByText("Convite enviado e membro associado à organização.").waitFor();
+    await boss.waitForTimeout(1_500);
+    await person(boss, `convidado-${run}`).getByRole("button", { name: "Reenviar convite" }).click();
+    await boss.getByText("Convite reenviado.", { exact: false }).waitFor();
+    assert.equal(await mailCount(address), 2);
+    await person(boss, "Executor Teste").getByRole("button", { name: "Reenviar convite" }).click();
+    await boss.getByText("já ativou a conta", { exact: false }).waitFor();
+  });
+
+  await step("dono muda o papel de uma pessoa", boss, async () => {
+    await team(boss);
+    boss.once("dialog", dialog => dialog.accept());
+    await boss.getByLabel("Papel de Executor Teste").selectOption("manager");
+    await boss.getByText("agora é Gestor", { exact: false }).waitFor();
+    assert.equal((await membership(executor.id)).role, "manager");
+    boss.once("dialog", dialog => dialog.accept());
+    await boss.getByLabel("Papel de Executor Teste").selectOption("collaborator");
+    await boss.getByText("agora é Executor", { exact: false }).waitFor();
+    assert.equal((await membership(executor.id)).role, "collaborator");
+    assert.equal(await boss.getByLabel("Papel de Dona Teste").count(), 0);
+    assert.equal(await person(boss, "Dona Teste").getByRole("button").count(), 0);
+  });
+
+  await step("gestor não muda papel nem remove ninguém", lead, async () => {
+    await team(lead);
+    assert.equal(await lead.getByRole("button", { name: "Remover acesso" }).count(), 0);
+    assert.equal(await lead.locator(".member-row select").count(), 0);
+    assert.equal(await person(lead, "Executor Teste").getByRole("button", { name: "Reenviar convite" }).count(), 1);
+    assert.equal(await person(lead, "Dona Teste").getByRole("button").count(), 0);
+  });
+
+  await step("pessoa removida pelo dono perde o acesso e volta ao ser reativada", phone, async () => {
+    await team(boss);
+    boss.once("dialog", dialog => dialog.accept());
+    await person(boss, "Executor Teste").getByRole("button", { name: "Remover acesso" }).click();
+    await boss.locator(".member-row.is-inactive").waitFor();
+    assert.equal((await membership(executor.id)).active, false);
     await open(phone, "/dashboard");
     await phone.getByText("Organização do usuário não encontrada.").first().waitFor();
     await open(phone, `/executions/${assignmentId}`);
@@ -327,6 +391,12 @@ try {
     const text = await phone.locator("body").innerText();
     assert.ok(!text.includes("Maria da Silva") && !text.includes("Extintor sem lacre"), "desativado ainda vê a execução");
     assert.ok(text.trim().length > 0, "tela em branco");
+    boss.once("dialog", dialog => dialog.accept());
+    await boss.locator(".member-row.is-inactive").getByRole("button", { name: "Reativar" }).click();
+    await person(boss, "Executor Teste").getByRole("button", { name: "Remover acesso" }).waitFor();
+    assert.equal((await membership(executor.id)).active, true);
+    await open(phone, "/dashboard");
+    await phone.getByText("Checklists operacionais").waitFor();
   });
 } finally {
   await browser.close();
