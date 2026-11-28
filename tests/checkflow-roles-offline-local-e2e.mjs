@@ -207,6 +207,30 @@ try {
     assert.equal((await rows(`non_conformities?select=id&execution_id=eq.${executionId}`)).length, 1);
   });
 
+  await step("resposta com não conformidade registrada não pode ser trocada", phone, async () => {
+    const second = phone.locator(".conditional-answer > select").nth(1);
+    assert.equal(await second.inputValue(), "Não");
+    assert.equal(await second.isDisabled(), true, "dá para trocar a resposta e a não conformidade continua aberta");
+    assert.equal(await phone.getByRole("button", { name: "Atualizar ocorrência" }).isEnabled(), true);
+  });
+
+  await step("'Não' sem registrar bloqueia a conclusão, mesmo com ocorrência antiga", phone, async () => {
+    // Dado gravado antes desta trava: resposta "Sim" com a ocorrência ainda aberta.
+    const [{ item_id: itemId }] = await rows(`non_conformities?select=item_id&execution_id=eq.${executionId}`);
+    await admin(`/rest/v1/execution_answers?execution_id=eq.${executionId}&item_id=eq.${itemId}`, { value: "Sim" }, "PATCH");
+    await phone.reload({ waitUntil: "networkidle" });
+    const second = phone.locator(".conditional-answer > select").nth(1);
+    await second.waitFor();
+    assert.equal(await second.inputValue(), "Sim");
+    await second.selectOption("Não");
+    await phone.getByText("sem registrar", { exact: false }).waitFor({ timeout: 5_000 });
+    await phone.getByRole("button", { name: "Atualizar ocorrência" }).click();
+    // O campo também fica desabilitado durante o envio: esperar a confirmação, não o bloqueio.
+    await phone.getByText("Não conformidade atualizada.").waitFor({ timeout: 15_000 });
+    assert.equal(await second.isDisabled(), true);
+    assert.equal((await rows(`execution_answers?select=value&execution_id=eq.${executionId}&item_id=eq.${itemId}`))[0].value, "Não");
+  });
+
   await step("sem conexão ao enviar foto: avisa e o reenvio funciona", phone, async () => {
     const input = phone.locator('.photo-answer input[type="file"]');
     await offline(true);
@@ -273,6 +297,25 @@ try {
       assert.ok(!/Executor Teste|Extintor sem lacre|Maria da Silva|Loja Centro/.test(text), `${path} vaza dados`);
       assert.ok(text.trim().length > 0, `${path} ficou em branco`);
     }
+  });
+
+  await step("painel, histórico e relatório avisam quando passam de 50 execuções", other, async () => {
+    const [{ organization_id: org }] = await rows(`organization_members?select=organization_id&user_id=eq.${outsider.id}`);
+    const base = { organization_id: org, created_by: outsider.id };
+    const [checklist] = await admin("/rest/v1/checklists", { ...base, name: "Rotina longa", status: "active" });
+    // Uma de cada vez: o banco recusa duas atribuições abertas do mesmo checklist para a mesma pessoa.
+    for (let index = 0; index < 51; index += 1) {
+      const [assignment] = await admin("/rest/v1/checklist_assignments", { ...base, checklist_id: checklist.id, assigned_to: outsider.id });
+      const [execution] = await admin("/rest/v1/checklist_executions", { ...base, checklist_id: checklist.id, assignment_id: assignment.id, executor_id: outsider.id });
+      await admin(`/rest/v1/checklist_executions?id=eq.${execution.id}`, { status: "completed", completed_at: execution.started_at, conformity_percentage: 100, summary: {} }, "PATCH");
+    }
+    await open(other, "/dashboard");
+    await other.getByText("50 execuções mais recentes", { exact: false }).waitFor({ timeout: 5_000 });
+    await nav(other, "Histórico").click();
+    await other.getByText("50 execuções concluídas mais recentes", { exact: false }).waitFor({ timeout: 5_000 });
+    assert.equal(await other.locator(".history-row").count(), 50);
+    await nav(other, "Relatórios").click();
+    await other.getByText("mais de 50 conclusões", { exact: false }).waitFor({ timeout: 5_000 });
   });
 
   await step("executor desativado perde o acesso", phone, async () => {

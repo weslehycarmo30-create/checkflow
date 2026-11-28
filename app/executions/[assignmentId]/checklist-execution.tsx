@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { PrivateRouteGuard } from "../../private-route-guard";
 import { initializeSupabaseBrowserClient } from "../../../lib/supabase";
 import { FeedbackMessage, useFeedback } from "../../feedback";
-import { createSerialQueue, executionProgress, executionSectionsFromSnapshot, isAnswered, requiredExecutionItems, retryOnLockConflict } from "../../../lib/pilot-execution-state.mjs";
+import { createSerialQueue, executionProgress, executionSectionsFromSnapshot, isAnswered, isFailureLocked, requiredExecutionItems, retryOnLockConflict } from "../../../lib/pilot-execution-state.mjs";
 import { operationalFailure, safeOperationalMessage } from "../../../lib/operational-telemetry.mjs";
 
 type Assignment = {
@@ -39,6 +39,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
   const [answers,setAnswers] = useState<Record<string,AnswerValue>>({});
   const [observations,setObservations] = useState<Record<string,string>>({});
   const [nonConformityItems,setNonConformityItems] = useState<string[]>([]);
+  const [unsavedFailures,setUnsavedFailures] = useState<string[]>([]);
   const [userId,setUserId] = useState("");
   const [loading,setLoading] = useState(true);
   const [busy,setBusy] = useState(false);
@@ -55,7 +56,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     return isAnswered(answers[item.id], item.answer_type);
   }).length;
   const progress = executionProgress(items, answers);
-  const requiredMissing = requiredExecutionItems(items, answers, observations, nonConformityItems);
+  const requiredMissing = requiredExecutionItems(items, answers, observations, nonConformityItems, unsavedFailures);
   const invalidPersistedCompletion = execution?.status === "completed" && requiredMissing.length > 0;
   const reportFailure = (errorCode:string, operation:string, entity:string, entityId?:string, error?:unknown) => {
     operationalFailure({ operation, entity, entityId, organizationId: assignment?.organization_id, errorCode, error });
@@ -65,6 +66,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
   const load = async () => {
     setLoading(true);
     setError("");
+    setUnsavedFailures([]);
     const supabase = await initializeSupabaseBrowserClient();
     if (!supabase) { setError("Supabase não configurado."); setLoading(false); return; }
     const { data: { user } } = await supabase.auth.getUser();
@@ -214,6 +216,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     if (answerError || !data) reportFailure("ANSWER_SAVE_FAILED", "salvar a resposta", "item", itemId, answerError);
     else {
       setAnswers(current=>({...current,[itemId]:value}));
+      setUnsavedFailures(current=>current.filter(id=>id!==itemId));
       showFeedback("Resposta salva.");
     }
     } catch (error) { reportFailure("ANSWER_SAVE_FAILED", "salvar a resposta", "item", itemId, error); }
@@ -243,6 +246,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     else {
       setAnswers(current=>({...current,[item.id]:"Não"}));
       setNonConformityItems(current=>current.includes(item.id)?current:[...current,item.id]);
+      setUnsavedFailures(current=>current.filter(id=>id!==item.id));
       showFeedback(existing?"Não conformidade atualizada.":"Não conformidade registrada automaticamente.");
     }
     } catch (error) { reportFailure("ANSWER_SAVE_FAILED", "registrar a não conformidade", "item", item.id, error); }
@@ -310,7 +314,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
       return;
     }
     if (requiredMissing.length > 0) {
-      setError(`Responda os ${requiredMissing.length} item(ns) obrigatório(s) pendente(s).`);
+      setError(`Resolva os ${requiredMissing.length} item(ns) pendente(s) antes de finalizar.`);
       return;
     }
     actionLock.current = true;
@@ -348,11 +352,14 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
     if (item.answer_type==="yes_no") {
       const isFailure = value==="Não";
       const occurrenceSaved = nonConformityItems.includes(item.id);
+      const locked = isFailureLocked(item.id, value, nonConformityItems, unsavedFailures);
+      const unsaved = unsavedFailures.includes(item.id);
       return <div className="conditional-answer">
-        <select aria-labelledby={`prompt-${item.id}`} value={String(value??"")} disabled={readOnly} onChange={event=>{
+        <select aria-labelledby={`prompt-${item.id}`} value={String(value??"")} disabled={readOnly||locked} onChange={event=>{
           const nextValue=event.target.value;
           if (nextValue==="Não") {
             setAnswers(current=>({...current,[item.id]:"Não"}));
+            setUnsavedFailures(current=>current.includes(item.id)?current:[...current,item.id]);
             clearFeedback();
           } else {
             void saveAnswer(item.id,nextValue,{isConforming:nextValue==="Sim"});
@@ -362,7 +369,8 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
           <label htmlFor={`observation-${item.id}`}>Observação da não conformidade <em>Obrigatória</em></label>
           <textarea id={`observation-${item.id}`} value={observations[item.id]||""} disabled={readOnly} placeholder="Descreva o que foi encontrado" onChange={event=>setObservations(current=>({...current,[item.id]:event.target.value}))}/>
           <button type="button" className="secondary" disabled={readOnly||!observations[item.id]?.trim()} onClick={()=>saveNonConformity(item)}>{savingItems.includes(item.id)?"Salvando...":occurrenceSaved?"Atualizar ocorrência":"Registrar não conformidade"}</button>
-          {occurrenceSaved&&<small>Ocorrência registrada e visível para a gestão.</small>}
+          {unsaved&&<small>Resposta “Não” ainda sem registrar. Toque em {occurrenceSaved?"Atualizar ocorrência":"Registrar não conformidade"}.</small>}
+          {occurrenceSaved&&!unsaved&&<small>Ocorrência registrada e visível para a gestão.{locked&&execution?.status!=="completed"?" A resposta continua “Não”; a correção segue no plano de ação.":""}</small>}
         </div>}
       </div>;
     }
@@ -395,7 +403,7 @@ export default function ChecklistExecution({ assignmentId }: { assignmentId: str
         {execution.status!=="completed"&&<div className="execution-actions"><button className="secondary" disabled={busy} onClick={()=>setExecutionStatus(execution.status==="paused"?"in_progress":"paused")}>{execution.status==="paused"?"Continuar checklist":"Pausar"}</button><span>Iniciado em {new Date(execution.started_at).toLocaleString("pt-BR")}</span></div>}
         {execution.status==="completed"&&<section className="execution-card completion-card"><span>{invalidPersistedCompletion?"!":"✓"}</span><div><h2>{invalidPersistedCompletion?"Execução concluída com dados persistidos inconsistentes":"Checklist finalizado"}</h2><p>{invalidPersistedCompletion?`${requiredMissing.length} item(ns) obrigatório(s) não possuem resposta válida persistida. Nenhuma resposta foi alterada nesta tela.`:`Concluído em ${new Date(execution.completed_at||execution.started_at).toLocaleString("pt-BR")}.`}</p></div></section>}
         {sections.map(section=><section className="execution-card execution-section" key={section.id}><h2>{section.title}</h2>{section.checklist_items.map((item,index)=><article className="execution-item" key={item.id}><div className="item-number">{index+1}</div><div><label id={`prompt-${item.id}`}>{item.prompt}{item.required&&<em>Obrigatório</em>}</label>{answerField(item)}</div></article>)}</section>)}
-        {execution.status!=="completed"&&<section className="execution-card finish-card"><button className="primary" disabled={busy||savingItems.length>0||requiredMissing.length>0||execution.status==="paused"} onClick={finishExecution}>{busy?"Finalizando...":savingItems.length>0?"Salvando respostas...":"Finalizar checklist"}</button>{requiredMissing.length>0&&<p>{requiredMissing.length} item(ns) obrigatório(s) ainda pendente(s).</p>}</section>}
+        {execution.status!=="completed"&&<section className="execution-card finish-card"><button className="primary" disabled={busy||savingItems.length>0||requiredMissing.length>0||execution.status==="paused"} onClick={finishExecution}>{busy?"Finalizando...":savingItems.length>0?"Salvando respostas...":"Finalizar checklist"}</button>{requiredMissing.length>0&&<p>{requiredMissing.length} item(ns) {unsavedFailures.length?"":"obrigatório(s) "}ainda pendente(s).</p>}</section>}
       </>}
     </div>}
     {error&&assignment&&<p className="detail-message error" role="alert">{error}</p>}
