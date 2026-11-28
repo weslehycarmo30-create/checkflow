@@ -35,7 +35,7 @@ const faqs = [
   ["Consigo saber quem executou cada checklist?", "Sim. Cada execução registra a pessoa responsável, o horário e as respostas dadas."],
   ["O histórico fica registrado?", "Sim. As execuções concluídas continuam disponíveis no histórico, com respostas, evidências e não conformidades."],
   ["Os dados de uma empresa ficam separados das outras?", "Sim. Cada empresa tem o próprio espaço, e cada pessoa vê apenas o que o seu papel na equipe permite."],
-  ["Para quais operações o CheckFlow serve?", "Para rotinas recorrentes como abertura, fechamento, higiene, conferência e montagem, em restaurantes, bares, buffets, eventos e operações parecidas."],
+  ["Para quais operações o CheckFlow serve?", "Para rotinas do dia a dia, como abertura, fechamento, higiene, conferência e montagem, em restaurantes, bares, buffets, eventos e operações parecidas."],
   ...(salesUrl ? [["Como funciona o piloto de 14 dias?", "Você escolhe uma rotina real, nós ajudamos a estruturá-la no CheckFlow em até 48 horas e sua equipe usa durante 14 dias. No fim, avaliamos juntos o resultado e a continuidade."]] : []),
 ];
 
@@ -48,7 +48,7 @@ const structuredData = {
 };
 
 const benefits = [
-  ["01", "Rotinas claras", "Transforme processos recorrentes em checklists digitais com responsáveis definidos."],
+  ["01", "Rotinas claras", "Transforme os processos da operação em checklists digitais com responsáveis definidos."],
   ["02", "Evidências no contexto", "Registre respostas e, nos fluxos compatíveis, fotos durante a execução."],
   ["03", "Desvios visíveis", "Acompanhe não conformidades e planos de ação com o histórico da operação."],
 ];

@@ -82,3 +82,9 @@ test("qualification stays local and safely encodes the commercial WhatsApp messa
   assert.equal(buildQualifiedSalesWhatsAppUrl(undefined, qualification), null);
   assert.doesNotMatch(publicCopy, /fetch\(|supabase|insert\(/i);
 });
+
+test("the landing page does not promise recurring routines, which the product does not have yet", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(page, /recorrente|automaticamente|agendad|lembrete/i);
+});
