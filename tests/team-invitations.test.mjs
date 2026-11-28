@@ -31,7 +31,8 @@ test("owner invitation derives the organization server-side and can create a man
     calls.push({ url, init });
     if (url.pathname === "/auth/v1/user") return Response.json({ id: "owner-a" });
     if (url.pathname === "/rest/v1/organization_members" && init.method !== "POST") {
-      return Response.json([{ organization_id: "org-a", role: "owner" }]);
+      // The new person has no membership yet.
+      return Response.json(url.searchParams.get("user_id") === "eq.owner-a" ? [{ organization_id: "org-a", role: "owner" }] : []);
     }
     // Real GoTrue shape: the user object at the top level (see @supabase/auth-js _userResponse).
     if (url.pathname === "/auth/v1/invite") return Response.json({ id: "new-manager", email: "manager@example.com" });
@@ -161,4 +162,29 @@ test("nobody is linked when the invitee's memberships cannot be checked", { conc
     assert.equal(response.status, 502);
     assert.equal(calls.includes("link"), false);
   }
+});
+
+test("resending an invitation to a pending member of the same company succeeds without relinking", { concurrency: false }, async () => {
+  const calls = [];
+  const response = await inviteRequest(await loadWorker(), upstream({
+    invited: () => Response.json([{ organization_id: "org-a", active: true }]),
+    // What PostgREST answers when the membership already exists.
+    link: () => new Response("duplicate key", { status: 409 }),
+  }, calls));
+  assert.equal(response.status, 200);
+  assert.match((await response.json()).message, /Convite reenviado/);
+  assert.equal(calls.includes("link"), false);
+});
+
+test("inviting someone deactivated in the company says so and links nothing", { concurrency: false }, async () => {
+  const calls = [];
+  const response = await inviteRequest(await loadWorker(), upstream({ invited: () => Response.json([{ organization_id: "org-a", active: false }]) }, calls));
+  assert.equal(response.status, 409);
+  assert.match((await response.json()).error, /desativad/);
+  assert.equal(calls.includes("link"), false);
+});
+
+test("an inactive membership elsewhere does not block a new invitation", { concurrency: false }, async () => {
+  const response = await inviteRequest(await loadWorker(), upstream({ invited: () => Response.json([{ organization_id: "org-b", active: false }]) }));
+  assert.equal(response.status, 201);
 });

@@ -107,16 +107,22 @@ const worker = {
       // An invitation still pending elsewhere is accepted again by GoTrue. Linking that person
       // here too would attach them to a second company without their consent.
       const invitedResponse = await upstream(
-        `${supabaseUrl}/rest/v1/organization_members?select=organization_id&user_id=eq.${encodeURIComponent(invitedUserId)}&active=is.true`,
+        `${supabaseUrl}/rest/v1/organization_members?select=organization_id,active&user_id=eq.${encodeURIComponent(invitedUserId)}`,
         { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } },
       );
       const invitedMemberships = invitedResponse?.ok
-        ? await invitedResponse.json().catch(() => null) as Array<{ organization_id: string }> | null
+        ? await invitedResponse.json().catch(() => null) as Array<{ organization_id: string; active?: boolean }> | null
         : null;
       if (!invitedMemberships) return unavailable();
-      if (invitedMemberships.some(membership => membership.organization_id !== requester.organization_id)) {
+      if (invitedMemberships.some(membership => membership.organization_id !== requester.organization_id && membership.active !== false)) {
         return Response.json({ error: "Este e-mail já está vinculado a outra empresa." }, { status: 409 });
       }
+      // Already on this team: GoTrue has just sent the invitation again and there is nothing to link.
+      const current = invitedMemberships.find(membership => membership.organization_id === requester.organization_id);
+      if (current?.active === false) {
+        return Response.json({ error: "Essa pessoa está desativada nesta empresa." }, { status: 409 });
+      }
+      if (current) return Response.json({ message: "Convite reenviado. O papel da pessoa não mudou." }, { status: 200 });
 
       const createMembershipResponse = await upstream(`${supabaseUrl}/rest/v1/organization_members`, {
         method: "POST",
