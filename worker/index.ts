@@ -55,11 +55,18 @@ const worker = {
       }
       if (!accessToken) return Response.json({ error: "Sessão não encontrada." }, { status: 401 });
 
-      const payload = await request.json().catch(() => null) as { email?: unknown; role?: unknown } | null;
+      const payload = await request.json().catch(() => null) as { email?: unknown; role?: unknown; resend_user_id?: unknown } | null;
+      // Resending names a member of the team; the e-mail address stays on the server.
+      const isResend = payload?.resend_user_id !== undefined;
+      const resendUserId = typeof payload?.resend_user_id === "string" ? payload.resend_user_id : "";
       const email = typeof payload?.email === "string" ? payload.email.trim().toLowerCase() : "";
       const requestedRole = payload?.role === "manager" ? "manager" : payload?.role === "collaborator" || payload?.role === undefined ? "collaborator" : null;
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return Response.json({ error: "Informe um e-mail válido." }, { status: 400 });
-      if (!requestedRole) return Response.json({ error: "Papel de convite inválido." }, { status: 400 });
+      if (isResend) {
+        if (!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(resendUserId)) return Response.json({ error: "Pessoa inválida." }, { status: 400 });
+      } else {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return Response.json({ error: "Informe um e-mail válido." }, { status: 400 });
+        if (!requestedRole) return Response.json({ error: "Papel de convite inválido." }, { status: 400 });
+      }
 
       // Network failures and 5xx from Supabase are an outage, not a bad session or a lack of permission.
       const upstream = (input: string, init: RequestInit) => fetch(input, init).catch(() => null);
@@ -84,18 +91,51 @@ const worker = {
         return Response.json({ error: "Apenas owner ou manager com uma organização ativa pode convidar." }, { status: 403 });
       }
       const requester = memberships[0];
-      if (requester.role === "manager" && requestedRole !== "collaborator") {
+      if (!isResend && requester.role === "manager" && requestedRole !== "collaborator") {
         return Response.json({ error: "Manager só pode convidar executor." }, { status: 403 });
       }
 
       // GoTrue reads redirect_to from the query string. The invited person has no password yet,
       // so the link opens the "set password" form of the auth screen.
       const redirectTo = encodeURIComponent(`${url.origin}/auth?mode=reset`);
-      const inviteResponse = await upstream(`${supabaseUrl}/auth/v1/invite?redirect_to=${redirectTo}`, {
+      const sendInvite = (address: string) => upstream(`${supabaseUrl}/auth/v1/invite?redirect_to=${redirectTo}`, {
         method: "POST",
         headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: address }),
       });
+      const tooMany = () => Response.json({ error: "Muitos e-mails em pouco tempo. Aguarde alguns minutos e tente de novo." }, { status: 429 });
+
+      if (isResend) {
+        const targetResponse = await upstream(
+          `${supabaseUrl}/rest/v1/organization_members?select=role,active&organization_id=eq.${encodeURIComponent(requester.organization_id)}&user_id=eq.${resendUserId}`,
+          { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } },
+        );
+        const targets = targetResponse?.ok ? await targetResponse.json().catch(() => null) as Array<{ role: string; active: boolean }> | null : null;
+        if (!targets) return unavailable();
+        const target = targets[0];
+        if (!target) return Response.json({ error: "Essa pessoa não faz parte da equipe." }, { status: 404 });
+        if (target.role === "owner" || (requester.role === "manager" && target.role !== "collaborator")) {
+          return Response.json({ error: "Você não pode reenviar o convite dessa pessoa." }, { status: 403 });
+        }
+        if (!target.active) return Response.json({ error: "Reative a pessoa antes de reenviar o convite." }, { status: 409 });
+        const accountResponse = await upstream(`${supabaseUrl}/auth/v1/admin/users/${resendUserId}`, {
+          headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
+        });
+        const account = accountResponse?.ok
+          ? await accountResponse.json().catch(() => null) as { email?: string; email_confirmed_at?: string | null; confirmed_at?: string | null } | null
+          : null;
+        if (!account?.email) return unavailable();
+        const activated = () => Response.json({ error: "Essa pessoa já ativou a conta. Se esqueceu a senha, ela pode usar “Esqueci a senha”." }, { status: 409 });
+        if (account.email_confirmed_at || account.confirmed_at) return activated();
+        const resent = await sendInvite(account.email);
+        if (resent?.status === 429) return tooMany();
+        if (!resent || resent.status >= 500) return unavailable();
+        if (!resent.ok) return Response.json({ error: "Não foi possível reenviar o convite." }, { status: 400 });
+        return Response.json({ message: "Convite reenviado." }, { status: 200 });
+      }
+
+      const inviteResponse = await sendInvite(email);
+      if (inviteResponse?.status === 429) return tooMany();
       if (!inviteResponse || inviteResponse.status >= 500) return unavailable();
       // GoTrue returns the user object itself; some responses wrap it in `user`.
       const invite = await inviteResponse.json().catch(() => ({})) as { id?: string; user?: { id?: string }; msg?: string; message?: string };
@@ -107,16 +147,22 @@ const worker = {
       // An invitation still pending elsewhere is accepted again by GoTrue. Linking that person
       // here too would attach them to a second company without their consent.
       const invitedResponse = await upstream(
-        `${supabaseUrl}/rest/v1/organization_members?select=organization_id&user_id=eq.${encodeURIComponent(invitedUserId)}&active=is.true`,
+        `${supabaseUrl}/rest/v1/organization_members?select=organization_id,active&user_id=eq.${encodeURIComponent(invitedUserId)}`,
         { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } },
       );
       const invitedMemberships = invitedResponse?.ok
-        ? await invitedResponse.json().catch(() => null) as Array<{ organization_id: string }> | null
+        ? await invitedResponse.json().catch(() => null) as Array<{ organization_id: string; active?: boolean }> | null
         : null;
       if (!invitedMemberships) return unavailable();
-      if (invitedMemberships.some(membership => membership.organization_id !== requester.organization_id)) {
+      if (invitedMemberships.some(membership => membership.organization_id !== requester.organization_id && membership.active !== false)) {
         return Response.json({ error: "Este e-mail já está vinculado a outra empresa." }, { status: 409 });
       }
+      // Already on this team: GoTrue has just sent the invitation again and there is nothing to link.
+      const current = invitedMemberships.find(membership => membership.organization_id === requester.organization_id);
+      if (current?.active === false) {
+        return Response.json({ error: "Essa pessoa está desativada nesta empresa." }, { status: 409 });
+      }
+      if (current) return Response.json({ message: "Convite reenviado. O papel da pessoa não mudou." }, { status: 200 });
 
       const createMembershipResponse = await upstream(`${supabaseUrl}/rest/v1/organization_members`, {
         method: "POST",

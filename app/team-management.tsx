@@ -8,8 +8,9 @@ import {
   deactivateCurrentOrganizationUnit,
   listCurrentOrganizationUnits,
 } from "../lib/unit-management.mjs";
+import { memberActions, ROLE_LABELS, setMemberActive, setMemberRole } from "../lib/team-management.mjs";
 
-type Member = { user_id: string; role: "owner" | "manager" | "collaborator"; full_name: string };
+type Member = { user_id: string; role: "owner" | "manager" | "collaborator"; active: boolean; updated_at: string; full_name: string };
 type Unit = { id: string; name: string; address: string | null; active: boolean; created_at: string };
 
 export function TeamManagement({ organizationId }: { organizationId: string }) {
@@ -28,10 +29,15 @@ export function TeamManagement({ organizationId }: { organizationId: string }) {
   const [unitLoadError, setUnitLoadError] = useState("");
   const [unitNotice, setUnitNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const unitActionInFlight = useRef(false);
+  const [viewerId, setViewerId] = useState("");
+  const [memberBusy, setMemberBusy] = useState("");
+  const [memberNotice, setMemberNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+  const memberActionInFlight = useRef(false);
   const canManage = canManageUnits(viewerRole);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // `quiet` refreshes after a change without replacing the screen with the loading state.
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
     setLoadError("");
     setUnitLoadError("");
     const supabase = await initializeSupabaseBrowserClient();
@@ -55,6 +61,7 @@ export function TeamManagement({ organizationId }: { organizationId: string }) {
         return;
       }
       setViewerRole(membership.role);
+      setViewerId(user.id);
 
       try {
         const unitRows = await listCurrentOrganizationUnits(supabase, membership.organization_id);
@@ -69,7 +76,7 @@ export function TeamManagement({ organizationId }: { organizationId: string }) {
       }
 
       const { data: rows, error: memberError } = await supabase.from("organization_members")
-        .select("user_id,role").eq("organization_id", membership.organization_id).eq("active", true).order("created_at");
+        .select("user_id,role,active,updated_at").eq("organization_id", membership.organization_id).order("created_at");
       if (memberError) {
         setLoadError("Não foi possível carregar a equipe da organização.");
         return;
@@ -83,7 +90,9 @@ export function TeamManagement({ organizationId }: { organizationId: string }) {
         return;
       }
       const names = new Map((profiles || []).map(profile => [profile.id, profile.full_name || "Usuário"]));
-      setMembers((rows || []).map(member => ({ ...member, full_name: names.get(member.user_id) || "Usuário" })) as Member[]);
+      // Row security hides the profile of someone without access.
+      setMembers((rows || []).map(member => ({ ...member, full_name: names.get(member.user_id) || (member.active ? "Usuário" : "Nome indisponível") }))
+        .sort((a, b) => Number(b.active) - Number(a.active)) as Member[]);
     } catch {
       setLoadError("Não foi possível carregar os dados desta organização.");
     } finally {
@@ -127,6 +136,61 @@ export function TeamManagement({ organizationId }: { organizationId: string }) {
       setBusy(false);
     }
   };
+
+  const runMemberAction = async (member: Member, action: () => Promise<string>) => {
+    if (memberActionInFlight.current) return;
+    memberActionInFlight.current = true;
+    setMemberBusy(member.user_id);
+    setMemberNotice(null);
+    try {
+      const text = await action();
+      await load(true);
+      setMemberNotice({ kind: "success", text });
+    } catch (error) {
+      setMemberNotice({ kind: "error", text: error instanceof Error ? error.message : "Não foi possível concluir a ação." });
+    } finally {
+      memberActionInFlight.current = false;
+      setMemberBusy("");
+    }
+  };
+
+  const requireClient = async () => {
+    const supabase = await initializeSupabaseBrowserClient();
+    if (!supabase) throw new Error("Supabase não está configurado neste ambiente.");
+    return supabase;
+  };
+
+  const changeRole = (member: Member, nextRole: string) => {
+    if (!window.confirm(`Mudar ${member.full_name} para ${ROLE_LABELS[nextRole as Member["role"]]}?`)) return;
+    void runMemberAction(member, async () => {
+      await setMemberRole(await requireClient(), organizationId, member.user_id, nextRole);
+      return `${member.full_name} agora é ${ROLE_LABELS[nextRole as Member["role"]]}.`;
+    });
+  };
+
+  const changeAccess = (member: Member, active: boolean) => {
+    const question = active
+      ? "Reativar o acesso dessa pessoa à empresa?"
+      : `Remover o acesso de ${member.full_name}? A pessoa deixa de ver a empresa. Histórico e tarefas ficam registrados.`;
+    if (!window.confirm(question)) return;
+    void runMemberAction(member, async () => {
+      await setMemberActive(await requireClient(), organizationId, member.user_id, active);
+      return active ? "Acesso reativado." : `Acesso de ${member.full_name} removido.`;
+    });
+  };
+
+  const resend = (member: Member) => void runMemberAction(member, async () => {
+    const { data: { session } } = await (await requireClient()).auth.getSession();
+    if (!session) throw new Error("Sessão não encontrada. Entre novamente para continuar.");
+    const response = await fetch("/api/team-invitations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ resend_user_id: member.user_id }),
+    }).catch(() => null);
+    const body = await response?.json().catch(() => ({})) as { error?: string; message?: string } | undefined;
+    if (!response?.ok) throw new Error(body?.error || "Não foi possível reenviar o convite.");
+    return body?.message || "Convite reenviado.";
+  });
 
   const createUnit = async (event: FormEvent) => {
     event.preventDefault();
@@ -193,8 +257,22 @@ export function TeamManagement({ organizationId }: { organizationId: string }) {
           <button className="primary" type="submit" disabled={busy}>{busy ? "Enviando..." : "Enviar convite"}</button>
         </form>
         {message && <p className="data-state" role="status">{message}</p>}
-        <div className="data-head"><span>Membro</span><span>Papel</span><span></span><span></span></div>
-        {members.map(member => <div className="data-row" key={member.user_id}><span><strong>{member.full_name}</strong></span><span>{member.role === "owner" ? "Proprietário" : member.role === "manager" ? "Gestor" : "Executor"}</span><span></span><span></span></div>)}
+        {memberNotice && <p className={`data-state ${memberNotice.kind === "error" ? "error" : "unit-success"}`} role={memberNotice.kind === "error" ? "alert" : "status"}>{memberNotice.text}</p>}
+        <div className="member-list" role="list" aria-label="Pessoas da organização">
+          {members.map(member => {
+            const actions = memberActions(viewerRole, viewerId, member);
+            const waiting = Boolean(memberBusy);
+            return <div className={`member-row${member.active ? "" : " is-inactive"}`} key={member.user_id} role="listitem">
+              <div className="member-copy"><strong>{member.full_name}</strong><span>{member.active ? ROLE_LABELS[member.role] : `${ROLE_LABELS[member.role]} · sem acesso desde ${new Date(member.updated_at).toLocaleDateString("pt-BR")}`}</span></div>
+              <div className="member-actions">
+                {actions.changeRole && <select aria-label={`Papel de ${member.full_name}`} value={member.role} disabled={waiting} onChange={event => changeRole(member, event.target.value)}><option value="collaborator">Executor</option><option value="manager">Gestor</option></select>}
+                {actions.resend && <button type="button" className="secondary" disabled={waiting} onClick={() => resend(member)}>Reenviar convite</button>}
+                {actions.deactivate && <button type="button" className="secondary" disabled={waiting} onClick={() => changeAccess(member, false)}>Remover acesso</button>}
+                {actions.reactivate && <button type="button" className="secondary" disabled={waiting} onClick={() => changeAccess(member, true)}>Reativar</button>}
+              </div>
+            </div>;
+          })}
+        </div>
       </article>
     </>}
 
