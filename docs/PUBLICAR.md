@@ -5,7 +5,17 @@ Situação em 27/11/2026. **O site ainda não está publicado.** A zona `checkfl
 ## O que este conjunto traz
 A branch `release/piloto` junta, sobre o `main` (`44c4fa5`): correções de resposta, pendências e convite (#22), tela de pessoas (#23), pacotes vulneráveis corrigidos (#24), a landing nova (#6) e este guia (#20). Não há migração além das que já estavam no `main`.
 
-@@CHECKS@@
+## Conferido em 27/11
+Clone limpo desta branch (`a5e8668`), Windows, Node 26, seguindo os comandos abaixo com valores de exemplo:
+
+| Checagem | Resultado |
+| --- | --- |
+| `npm ci`, lint, `tsc` | ok (9 avisos antigos de lint) |
+| `npm test` (inclui build) | 156/156 |
+| `npm run e2e:local` (piloto, papéis, pessoas, quedas de conexão; banco local) | 34/34 |
+| `npm run deploy:cloudflare` (ensaio, nada publicado) | ok, 1,8 MB; número de WhatsApp presente no build; `git status` limpo |
+
+Não testado: Supabase e e-mails de produção, painel da Cloudflare, publicação real, `verify:deploy` contra o site e celular real.
 
 ## Riscos para resolver antes
 
